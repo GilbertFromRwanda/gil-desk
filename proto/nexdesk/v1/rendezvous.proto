@@ -4,12 +4,14 @@ package nexdesk.v1;
 
 option go_package = "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1";
 
-// Device registration, presence/heartbeat, and peer lookup (planner tasks
-// G-08..G-11). Session authorization (G-12) is not in this service yet.
+// Device registration, presence/heartbeat, peer lookup, and session
+// authorization (planner tasks G-08..G-12).
 service RendezvousService {
   rpc RegisterDevice(RegisterDeviceRequest) returns (RegisterDeviceResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc LookupPeer(LookupPeerRequest) returns (LookupPeerResponse);
+  rpc AuthorizeDevice(AuthorizeDeviceRequest) returns (AuthorizeDeviceResponse);
+  rpc RequestSession(RequestSessionRequest) returns (RequestSessionResponse);
 }
 
 message RegisterDeviceRequest {
@@ -44,4 +46,32 @@ message LookupPeerResponse {
   string public_key = 2;
   bool online = 3;
   string endpoint = 4; // only set when online
+}
+
+// Grants allowed_device_id permission to request a session with
+// owner_device_id. Stands in for a real pairing UI/account model
+// (G-13..G-19, not built yet) — for now this is the only way to populate
+// the authorization list.
+message AuthorizeDeviceRequest {
+  string owner_device_id = 1;
+  string allowed_device_id = 2;
+}
+
+message AuthorizeDeviceResponse {
+  bool accepted = 1;
+}
+
+// Checks the authorization list and, if allowed, issues a short-lived
+// signed session token — proof for a relay or the target device that the
+// rendezvous server already authorized this pairing, without either of
+// them needing their own database round trip (planner task G-12).
+message RequestSessionRequest {
+  string requester_device_id = 1;
+  string target_device_id = 2;
+}
+
+message RequestSessionResponse {
+  bool authorized = 1;
+  string session_token = 2; // empty when not authorized
+  uint32 expires_in_seconds = 3;
 }

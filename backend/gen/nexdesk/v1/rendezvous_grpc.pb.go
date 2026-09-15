@@ -19,21 +19,25 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RendezvousService_RegisterDevice_FullMethodName = "/nexdesk.v1.RendezvousService/RegisterDevice"
-	RendezvousService_Heartbeat_FullMethodName      = "/nexdesk.v1.RendezvousService/Heartbeat"
-	RendezvousService_LookupPeer_FullMethodName     = "/nexdesk.v1.RendezvousService/LookupPeer"
+	RendezvousService_RegisterDevice_FullMethodName  = "/nexdesk.v1.RendezvousService/RegisterDevice"
+	RendezvousService_Heartbeat_FullMethodName       = "/nexdesk.v1.RendezvousService/Heartbeat"
+	RendezvousService_LookupPeer_FullMethodName      = "/nexdesk.v1.RendezvousService/LookupPeer"
+	RendezvousService_AuthorizeDevice_FullMethodName = "/nexdesk.v1.RendezvousService/AuthorizeDevice"
+	RendezvousService_RequestSession_FullMethodName  = "/nexdesk.v1.RendezvousService/RequestSession"
 )
 
 // RendezvousServiceClient is the client API for RendezvousService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Device registration, presence/heartbeat, and peer lookup (planner tasks
-// G-08..G-11). Session authorization (G-12) is not in this service yet.
+// Device registration, presence/heartbeat, peer lookup, and session
+// authorization (planner tasks G-08..G-12).
 type RendezvousServiceClient interface {
 	RegisterDevice(ctx context.Context, in *RegisterDeviceRequest, opts ...grpc.CallOption) (*RegisterDeviceResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	LookupPeer(ctx context.Context, in *LookupPeerRequest, opts ...grpc.CallOption) (*LookupPeerResponse, error)
+	AuthorizeDevice(ctx context.Context, in *AuthorizeDeviceRequest, opts ...grpc.CallOption) (*AuthorizeDeviceResponse, error)
+	RequestSession(ctx context.Context, in *RequestSessionRequest, opts ...grpc.CallOption) (*RequestSessionResponse, error)
 }
 
 type rendezvousServiceClient struct {
@@ -74,16 +78,38 @@ func (c *rendezvousServiceClient) LookupPeer(ctx context.Context, in *LookupPeer
 	return out, nil
 }
 
+func (c *rendezvousServiceClient) AuthorizeDevice(ctx context.Context, in *AuthorizeDeviceRequest, opts ...grpc.CallOption) (*AuthorizeDeviceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthorizeDeviceResponse)
+	err := c.cc.Invoke(ctx, RendezvousService_AuthorizeDevice_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rendezvousServiceClient) RequestSession(ctx context.Context, in *RequestSessionRequest, opts ...grpc.CallOption) (*RequestSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RequestSessionResponse)
+	err := c.cc.Invoke(ctx, RendezvousService_RequestSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RendezvousServiceServer is the server API for RendezvousService service.
 // All implementations must embed UnimplementedRendezvousServiceServer
 // for forward compatibility.
 //
-// Device registration, presence/heartbeat, and peer lookup (planner tasks
-// G-08..G-11). Session authorization (G-12) is not in this service yet.
+// Device registration, presence/heartbeat, peer lookup, and session
+// authorization (planner tasks G-08..G-12).
 type RendezvousServiceServer interface {
 	RegisterDevice(context.Context, *RegisterDeviceRequest) (*RegisterDeviceResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	LookupPeer(context.Context, *LookupPeerRequest) (*LookupPeerResponse, error)
+	AuthorizeDevice(context.Context, *AuthorizeDeviceRequest) (*AuthorizeDeviceResponse, error)
+	RequestSession(context.Context, *RequestSessionRequest) (*RequestSessionResponse, error)
 	mustEmbedUnimplementedRendezvousServiceServer()
 }
 
@@ -102,6 +128,12 @@ func (UnimplementedRendezvousServiceServer) Heartbeat(context.Context, *Heartbea
 }
 func (UnimplementedRendezvousServiceServer) LookupPeer(context.Context, *LookupPeerRequest) (*LookupPeerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method LookupPeer not implemented")
+}
+func (UnimplementedRendezvousServiceServer) AuthorizeDevice(context.Context, *AuthorizeDeviceRequest) (*AuthorizeDeviceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AuthorizeDevice not implemented")
+}
+func (UnimplementedRendezvousServiceServer) RequestSession(context.Context, *RequestSessionRequest) (*RequestSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RequestSession not implemented")
 }
 func (UnimplementedRendezvousServiceServer) mustEmbedUnimplementedRendezvousServiceServer() {}
 func (UnimplementedRendezvousServiceServer) testEmbeddedByValue()                           {}
@@ -178,6 +210,42 @@ func _RendezvousService_LookupPeer_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RendezvousService_AuthorizeDevice_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthorizeDeviceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RendezvousServiceServer).AuthorizeDevice(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RendezvousService_AuthorizeDevice_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RendezvousServiceServer).AuthorizeDevice(ctx, req.(*AuthorizeDeviceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RendezvousService_RequestSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RendezvousServiceServer).RequestSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RendezvousService_RequestSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RendezvousServiceServer).RequestSession(ctx, req.(*RequestSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RendezvousService_ServiceDesc is the grpc.ServiceDesc for RendezvousService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -196,6 +264,14 @@ var RendezvousService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LookupPeer",
 			Handler:    _RendezvousService_LookupPeer_Handler,
+		},
+		{
+			MethodName: "AuthorizeDevice",
+			Handler:    _RendezvousService_AuthorizeDevice_Handler,
+		},
+		{
+			MethodName: "RequestSession",
+			Handler:    _RendezvousService_RequestSession_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

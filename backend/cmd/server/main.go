@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"log/slog"
 	"net"
@@ -22,7 +23,10 @@ import (
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
 )
 
-const presenceTTL = 30 * time.Second
+const (
+	presenceTTL     = 30 * time.Second
+	sessionTokenTTL = 60 * time.Second
+)
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -50,9 +54,16 @@ func main() {
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
 	defer redisClient.Close()
 
+	signingKey, err := sessionSigningKey()
+	if err != nil {
+		slog.Error("session signing key", "error", err)
+		os.Exit(1)
+	}
+
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, presenceTTL)
-	rendezvousService := rendezvous.NewService(store, presence)
+	tokens := rendezvous.NewTokenIssuer(signingKey, sessionTokenTTL)
+	rendezvousService := rendezvous.NewService(store, presence, tokens)
 
 	grpcServer := grpc.NewServer()
 	nexdeskv1.RegisterRendezvousServiceServer(grpcServer, rendezvousService)
@@ -128,4 +139,21 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// sessionSigningKey reads NEXDESK_SESSION_SIGNING_KEY, or generates a
+// random one if unset. A generated key is ephemeral — it changes on every
+// restart, invalidating any outstanding session tokens — which is fine
+// given the short (60s) TTL, but a production deployment should set this
+// explicitly so a rolling restart doesn't strand in-flight authorizations.
+func sessionSigningKey() ([]byte, error) {
+	if v := os.Getenv("NEXDESK_SESSION_SIGNING_KEY"); v != "" {
+		return []byte(v), nil
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	slog.Warn("NEXDESK_SESSION_SIGNING_KEY not set; generated an ephemeral key for this process only")
+	return key, nil
 }

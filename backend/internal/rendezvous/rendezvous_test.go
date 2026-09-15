@@ -48,9 +48,12 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 
 	// The postgres image restarts its server process once during first-run
 	// initialization; the container can report "ready" a moment before the
-	// post-restart listener is actually accepting connections. Retry
-	// rather than fail on that race.
-	if err := waitForPing(ctx, pool, 10, 500*time.Millisecond); err != nil {
+	// post-restart listener is actually accepting connections again. That
+	// gap can stretch well past a second when multiple packages' tests
+	// are starting containers concurrently (go test ./... runs packages
+	// in parallel by default) and contending for host resources — retry
+	// generously rather than assume best-case timing.
+	if err := waitForPing(ctx, pool, 30, time.Second); err != nil {
 		t.Fatalf("postgres never became reachable: %v", err)
 	}
 
@@ -77,7 +80,8 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, 30*time.Second)
-	service := rendezvous.NewService(store, presence)
+	tokens := rendezvous.NewTokenIssuer([]byte("test-signing-key"), time.Minute)
+	service := rendezvous.NewService(store, presence, tokens)
 
 	t.Run("register then lookup finds the device but reports offline", func(t *testing.T) {
 		_, err := service.RegisterDevice(ctx, &nexdeskv1.RegisterDeviceRequest{
@@ -170,6 +174,66 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 		}
 		if resp.GetPublicKey() != "new-key" {
 			t.Fatalf("expected updated public key %q, got %q", "new-key", resp.GetPublicKey())
+		}
+	})
+
+	t.Run("session request is denied until the requester is authorized, then issues a valid token", func(t *testing.T) {
+		for _, id := range []string{"target-device", "requester-device"} {
+			if _, err := service.RegisterDevice(ctx, &nexdeskv1.RegisterDeviceRequest{
+				DeviceId: id, PublicKey: "pubkey-" + id,
+			}); err != nil {
+				t.Fatalf("RegisterDevice(%s): %v", id, err)
+			}
+		}
+
+		denied, err := service.RequestSession(ctx, &nexdeskv1.RequestSessionRequest{
+			RequesterDeviceId: "requester-device",
+			TargetDeviceId:    "target-device",
+		})
+		if err != nil {
+			t.Fatalf("RequestSession (before authorization): %v", err)
+		}
+		if denied.GetAuthorized() {
+			t.Fatal("expected session request to be denied before authorization")
+		}
+		if denied.GetSessionToken() != "" {
+			t.Fatal("expected no session token when unauthorized")
+		}
+
+		authResp, err := service.AuthorizeDevice(ctx, &nexdeskv1.AuthorizeDeviceRequest{
+			OwnerDeviceId:   "target-device",
+			AllowedDeviceId: "requester-device",
+		})
+		if err != nil {
+			t.Fatalf("AuthorizeDevice: %v", err)
+		}
+		if !authResp.GetAccepted() {
+			t.Fatal("expected AuthorizeDevice to be accepted")
+		}
+
+		granted, err := service.RequestSession(ctx, &nexdeskv1.RequestSessionRequest{
+			RequesterDeviceId: "requester-device",
+			TargetDeviceId:    "target-device",
+		})
+		if err != nil {
+			t.Fatalf("RequestSession (after authorization): %v", err)
+		}
+		if !granted.GetAuthorized() {
+			t.Fatal("expected session request to be authorized")
+		}
+		if granted.GetSessionToken() == "" {
+			t.Fatal("expected a non-empty session token")
+		}
+		if granted.GetExpiresInSeconds() == 0 {
+			t.Fatal("expected a non-zero expiry")
+		}
+
+		claims, err := tokens.Verify(granted.GetSessionToken())
+		if err != nil {
+			t.Fatalf("issued token did not verify: %v", err)
+		}
+		if claims.RequesterDeviceID != "requester-device" || claims.TargetDeviceID != "target-device" {
+			t.Fatalf("unexpected claims: %+v", claims)
 		}
 	})
 }
