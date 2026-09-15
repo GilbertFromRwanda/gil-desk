@@ -1,15 +1,10 @@
-//! TCP transport (planner task R-08): length-prefixed framing over
-//! `tokio::net::TcpStream` — a 4-byte big-endian length prefix followed by
-//! that many payload bytes.
+//! TCP transport (planner task R-08). Framing is shared with every other
+//! stream-based transport — see `transport::framing`.
 
 use crate::error::{NexError, Result};
+use crate::transport::framing::{read_frame, write_frame};
 use crate::transport::Connection;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener as TokioTcpListener, TcpStream};
-
-/// Guards against a corrupt/hostile length prefix causing an unbounded
-/// allocation before we've even validated the frame.
-const MAX_FRAME_LEN: u32 = 16 * 1024 * 1024; // 16 MiB
 
 pub struct TcpConnection {
     stream: TcpStream,
@@ -26,44 +21,21 @@ impl TcpConnection {
     fn from_stream(stream: TcpStream) -> Self {
         Self { stream }
     }
+
+    /// Exposes the underlying stream for transports layered on top of TCP
+    /// (e.g. TLS) that need to take ownership of it.
+    pub fn into_inner(self) -> TcpStream {
+        self.stream
+    }
 }
 
 impl Connection for TcpConnection {
     async fn send(&mut self, data: &[u8]) -> Result<()> {
-        let len: u32 = data
-            .len()
-            .try_into()
-            .map_err(|_| NexError::Transport("frame too large to send".to_string()))?;
-        self.stream
-            .write_all(&len.to_be_bytes())
-            .await
-            .map_err(|e| NexError::Transport(e.to_string()))?;
-        self.stream
-            .write_all(data)
-            .await
-            .map_err(|e| NexError::Transport(e.to_string()))?;
-        Ok(())
+        write_frame(&mut self.stream, data).await
     }
 
     async fn recv(&mut self) -> Result<Vec<u8>> {
-        let mut len_buf = [0u8; 4];
-        self.stream
-            .read_exact(&mut len_buf)
-            .await
-            .map_err(|e| NexError::Transport(e.to_string()))?;
-        let len = u32::from_be_bytes(len_buf);
-        if len > MAX_FRAME_LEN {
-            return Err(NexError::Transport(format!(
-                "frame length {len} exceeds max {MAX_FRAME_LEN}"
-            )));
-        }
-
-        let mut buf = vec![0u8; len as usize];
-        self.stream
-            .read_exact(&mut buf)
-            .await
-            .map_err(|e| NexError::Transport(e.to_string()))?;
-        Ok(buf)
+        read_frame(&mut self.stream).await
     }
 }
 
@@ -93,12 +65,26 @@ impl TcpListener {
             .map_err(|e| NexError::Transport(e.to_string()))?;
         Ok(TcpConnection::from_stream(stream))
     }
+
+    /// Accepts a raw stream without wrapping it, for transports layered on
+    /// top of TCP (e.g. TLS) that need to drive their own handshake on it.
+    pub async fn accept_raw(&self) -> Result<TcpStream> {
+        let (stream, _) = self
+            .listener
+            .accept()
+            .await
+            .map_err(|e| NexError::Transport(e.to_string()))?;
+        Ok(stream)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::NexError;
+    use crate::transport::framing::MAX_FRAME_LEN;
     use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
 
     #[tokio::test]
     async fn round_trips_a_message_over_a_real_socket() {

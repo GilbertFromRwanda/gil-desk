@@ -77,6 +77,14 @@ Host ports are intentionally non-standard (this machine runs several other proje
 - `tcp.rs` — real TCP transport (`TcpConnection`/`TcpListener`) with length-prefixed framing, a max-frame-size guard against hostile length prefixes, tested against actual sockets (round-trip, oversized frame rejected, clean error on peer disconnect).
 - `backoff.rs` — exponential reconnect backoff, capped, with reset.
 - `keepalive.rs` — heartbeat ticker (`tokio::time::Interval` wrapper), tested with a paused clock.
-- `mod.rs` — the `Connection` trait TCP implements; QUIC (R-09, an 8-point item — "split if possible" per the planner's own scale) is deliberately **not** implemented yet, since it needs its own TLS/certificate setup and deserves to land as its own focused piece of work rather than being folded in here.
+- `mod.rs` — the `Connection` trait TCP (and now TLS) implements; QUIC (R-09, an 8-point item — "split if possible" per the planner's own scale) is deliberately **not** implemented yet, since it needs its own TLS/certificate setup and deserves to land as its own focused piece of work rather than being folded in here.
+- `framing.rs` — length-prefixed message framing, shared by TCP and TLS so they can't drift on wire format.
 
-Crypto, protocol wire-up (frame reassembly/jitter/backpressure), and input encoding are still unimplemented stubs — that's the rest of Week 5 onward (R-09) plus Week 6–7.
+**Phase 1 (Rust Core), Week 6 — Security** done: `core/nexdesk-core/src/crypto`. Key exchange (R-15) is entirely TLS 1.3's own ECDHE via `rustls` — nothing here implements cryptographic primitives, same "don't hand-roll what a vetted library does" principle as the codec decision.
+
+- `tls.rs` — real TLS 1.3 over the existing TCP transport (`TlsConnection<S>` implements `Connection`, so callers can't tell it apart from plain TCP). Certificate verification **pins** the peer's exact cert rather than disabling verification (no CA in a P2P tool yet) — a real design decision, not a shortcut; production needs the pinned cert to come from a trusted channel (rendezvous/device identity, Phase 3). Tested against a real handshake (protocol version asserted as TLS 1.3) and a rejected mismatched-pin case.
+- `credential_store.rs` — `CredentialStore` trait + in-memory impl for tests; a real desktop build needs an OS-backed implementation (Windows Credential Manager, macOS Keychain, libsecret) — that's Phase 4 platform work, not core-crate work.
+- `replay.rs` — sliding-window nonce replay guard (the IPsec/DTLS anti-replay technique) for application-level messages, as defense in depth on top of TLS's own record-layer replay protection.
+- **`tests/gate_g1.rs`** — the actual Gate G1 acceptance test: two real peers establish a TCP+TLS 1.3 session, exchange a `SessionHello` handshake and protocol messages, shut down cleanly, and reconnect — all five Gate G1 criteria in one end-to-end test, nothing mocked.
+
+26 unit tests + the Gate G1 integration test, all passing locally, in Docker (Linux), and downstream in the napi addon. Protocol wire-up (frame reassembly/jitter/backpressure — R-19..R-23) and input encoding are next (Week 7), plus QUIC (R-09) whenever that gets picked up.
