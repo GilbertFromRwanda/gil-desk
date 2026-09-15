@@ -95,4 +95,20 @@ Host ports are intentionally non-standard (this machine runs several other proje
 - `protocol/backpressure.rs` — `FrameQueue`: bounded, drop-oldest-on-overflow (favors latency over completeness for real-time video), tracks a `dropped_count()` for the planner's `frames_dropped` metric.
 - `input/mod.rs` — hand-rolled compact binary encoding for `InputEvent` (not protobuf — these are small, extremely high-frequency messages where general-purpose framing overhead is real cost). Decoding untrusted bytes is bounds-checked throughout and proven not to panic on malformed/truncated input.
 
-42 unit tests + the Gate G1 integration test, all passing locally, in Docker (Linux), and downstream in the napi addon, zero clippy warnings. QUIC (R-09) is still the one deliberately-deferred piece from Week 5 — see that section above.
+**Phase 1 (Rust Core), Week 8 — Vertical slice** done: `core/nexdesk-core/src/bin/{host,client}.rs`. Real, runnable binaries — the point of this week is that Gate G1 is satisfied by actual compiled artifacts, not just library tests.
+
+- `host.rs` — binds, accepts connections, completes the TLS+SessionHello handshake, heartbeats, and now **persists its dev identity across restarts** (`<cert>.key` alongside the cert file) — the first run of this generated a fresh cert every restart, which made every previously-connected client's pinned cert go stale; that's now fixed, since a real device's identity should be stable.
+- `client.rs` — connects, handshakes, heartbeats, and **reconnects with exponential backoff** (reusing `transport::backoff::Backoff`) instead of exiting when the connection drops.
+- `tests/cli_vertical_slice.rs` — spawns the actual compiled binaries as separate OS processes (`env!("CARGO_BIN_EXE_*")`, not library calls) and drives them through connect → secure handshake → heartbeat exchange → kill the host → confirm the client retries → restart the host → confirm the client reconnects → clean shutdown. This is what actually exercises R-26/R-27/R-28, on top of what `tests/gate_g1.rs` already covers at the library level.
+- Manually verified end-to-end in two real terminals first (documented as a process, not just claimed): connect, live heartbeats both directions, kill `-9` the host mid-session, watch the client back off (200ms → 400ms → 800ms → ...), restart the host, watch the client reconnect. That's what caught the stale-identity-on-restart bug above — the automated test came second, once the manual run showed what to assert.
+
+Try it yourself:
+
+```bash
+cd core/nexdesk-core
+cargo run --bin host -- --bind 127.0.0.1:7000 --device-id my-host
+# in a second terminal:
+cargo run --bin client -- --server 127.0.0.1:7000 --cert nexdesk_host_cert.der --device-id my-client
+```
+
+47 unit tests + 2 integration tests (`gate_g1`, `cli_vertical_slice`), all passing locally, in Docker (Linux), and downstream in the napi addon, zero clippy warnings. QUIC (R-09) is still the one deliberately-deferred piece from Week 5 — see that section above. **This closes Phase 1 through Week 8**, i.e. Gate G1 and milestone M1.
