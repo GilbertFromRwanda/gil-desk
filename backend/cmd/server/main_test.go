@@ -17,13 +17,6 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
-func TestReadyz(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
-	rec := httptest.NewRecorder()
-
-	handleReadyz(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
-	}
-}
+// readyzHandler now depends on real Postgres/Redis connectivity, so it's
+// exercised by the integration test in internal/rendezvous instead of a
+// standalone unit test here.

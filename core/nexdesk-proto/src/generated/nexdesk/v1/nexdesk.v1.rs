@@ -9,7 +9,6 @@ pub struct SessionHello {
     #[prost(string, tag="2")]
     pub device_id: ::prost::alloc::string::String,
 }
-/// Placeholder for device registration / peer lookup (planner tasks G-08..G-10).
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RegisterDeviceRequest {
     #[prost(string, tag="1")]
@@ -21,6 +20,41 @@ pub struct RegisterDeviceRequest {
 pub struct RegisterDeviceResponse {
     #[prost(bool, tag="1")]
     pub accepted: bool,
+}
+/// Refreshes a device's presence TTL and records where it can currently be
+/// reached, so a later LookupPeer can hand that endpoint to a would-be
+/// direct connection attempt (planner Section 7 "Attempt direct connection
+/// -> if direct fails -> relay").
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HeartbeatRequest {
+    #[prost(string, tag="1")]
+    pub device_id: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub endpoint: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HeartbeatResponse {
+    #[prost(bool, tag="1")]
+    pub accepted: bool,
+    #[prost(uint32, tag="2")]
+    pub ttl_seconds: u32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LookupPeerRequest {
+    #[prost(string, tag="1")]
+    pub device_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LookupPeerResponse {
+    #[prost(bool, tag="1")]
+    pub found: bool,
+    #[prost(string, tag="2")]
+    pub public_key: ::prost::alloc::string::String,
+    #[prost(bool, tag="3")]
+    pub online: bool,
+    /// only set when online
+    #[prost(string, tag="4")]
+    pub endpoint: ::prost::alloc::string::String,
 }
 /// Placeholder for relay session allocation (planner tasks G-20..G-21).
 /// Relay must authenticate before allocating resources (Section 13).
