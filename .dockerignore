@@ -1,0 +1,8 @@
+core/target/
+desktop/native/target/
+desktop/native/*.node
+desktop/node_modules/
+desktop/dist/
+web/node_modules/
+codec/build/
+.git/

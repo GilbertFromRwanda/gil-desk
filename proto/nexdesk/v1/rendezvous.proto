@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package nexdesk.v1;
+
+option go_package = "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1";
+
+// Placeholder for device registration / peer lookup (planner tasks G-08..G-10).
+message RegisterDeviceRequest {
+  string device_id = 1;
+  string public_key = 2;
+}
+
+message RegisterDeviceResponse {
+  bool accepted = 1;
+}

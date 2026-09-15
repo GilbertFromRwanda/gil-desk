@@ -1,0 +1,26 @@
+# Rust
+core/target/
+desktop/native/target/
+desktop/native/*.node
+Cargo.lock
+
+# Go
+backend/nexdesk-server
+backend/*.exe
+
+# Node / Electron
+desktop/node_modules/
+desktop/dist/
+desktop/dist-electron/
+web/node_modules/
+web/dist/
+
+# C++
+codec/build/
+
+# General
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
