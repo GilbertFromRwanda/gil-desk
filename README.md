@@ -72,4 +72,11 @@ Host ports are intentionally non-standard (this machine runs several other proje
 - `error.rs` — crate-wide `NexError` (via `thiserror`).
 - `shutdown.rs` — coordinated cancellation (`tokio_util::CancellationToken`-backed `Shutdown` handle), tested with a real spawned task observing the signal.
 
-Transport, crypto, protocol wire-up, and input encoding (R-07 onward) are still unimplemented stubs — that's Week 5+.
+**Phase 1 (Rust Core), Week 5 — Transport** partially done: `core/nexdesk-core/src/transport`
+
+- `tcp.rs` — real TCP transport (`TcpConnection`/`TcpListener`) with length-prefixed framing, a max-frame-size guard against hostile length prefixes, tested against actual sockets (round-trip, oversized frame rejected, clean error on peer disconnect).
+- `backoff.rs` — exponential reconnect backoff, capped, with reset.
+- `keepalive.rs` — heartbeat ticker (`tokio::time::Interval` wrapper), tested with a paused clock.
+- `mod.rs` — the `Connection` trait TCP implements; QUIC (R-09, an 8-point item — "split if possible" per the planner's own scale) is deliberately **not** implemented yet, since it needs its own TLS/certificate setup and deserves to land as its own focused piece of work rather than being folded in here.
+
+Crypto, protocol wire-up (frame reassembly/jitter/backpressure), and input encoding are still unimplemented stubs — that's the rest of Week 5 onward (R-09) plus Week 6–7.

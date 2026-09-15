@@ -13,6 +13,9 @@ pub enum NexError {
 
     #[error("configuration error: {0}")]
     Config(String),
+
+    #[error("transport error: {0}")]
+    Transport(String),
 }
 
 pub type Result<T> = std::result::Result<T, NexError>;
