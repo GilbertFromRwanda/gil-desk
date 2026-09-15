@@ -4,7 +4,14 @@ package nexdesk.v1;
 
 option go_package = "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1";
 
-// Placeholder for device registration / peer lookup (planner tasks G-08..G-10).
+// Device registration, presence/heartbeat, and peer lookup (planner tasks
+// G-08..G-11). Session authorization (G-12) is not in this service yet.
+service RendezvousService {
+  rpc RegisterDevice(RegisterDeviceRequest) returns (RegisterDeviceResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc LookupPeer(LookupPeerRequest) returns (LookupPeerResponse);
+}
+
 message RegisterDeviceRequest {
   string device_id = 1;
   string public_key = 2;
@@ -12,4 +19,29 @@ message RegisterDeviceRequest {
 
 message RegisterDeviceResponse {
   bool accepted = 1;
+}
+
+// Refreshes a device's presence TTL and records where it can currently be
+// reached, so a later LookupPeer can hand that endpoint to a would-be
+// direct connection attempt (planner Section 7 "Attempt direct connection
+// -> if direct fails -> relay").
+message HeartbeatRequest {
+  string device_id = 1;
+  string endpoint = 2;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+  uint32 ttl_seconds = 2;
+}
+
+message LookupPeerRequest {
+  string device_id = 1;
+}
+
+message LookupPeerResponse {
+  bool found = 1;
+  string public_key = 2;
+  bool online = 3;
+  string endpoint = 4; // only set when online
 }

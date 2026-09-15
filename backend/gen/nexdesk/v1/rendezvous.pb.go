@@ -21,7 +21,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Placeholder for device registration / peer lookup (planner tasks G-08..G-10).
 type RegisterDeviceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
@@ -118,6 +117,226 @@ func (x *RegisterDeviceResponse) GetAccepted() bool {
 	return false
 }
 
+// Refreshes a device's presence TTL and records where it can currently be
+// reached, so a later LookupPeer can hand that endpoint to a would-be
+// direct connection attempt (planner Section 7 "Attempt direct connection
+// -> if direct fails -> relay").
+type HeartbeatRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	Endpoint      string                 `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HeartbeatRequest) Reset() {
+	*x = HeartbeatRequest{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HeartbeatRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HeartbeatRequest) ProtoMessage() {}
+
+func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
+func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *HeartbeatRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *HeartbeatRequest) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+type HeartbeatResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	TtlSeconds    uint32                 `protobuf:"varint,2,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HeartbeatResponse) Reset() {
+	*x = HeartbeatResponse{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HeartbeatResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HeartbeatResponse) ProtoMessage() {}
+
+func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
+func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *HeartbeatResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *HeartbeatResponse) GetTtlSeconds() uint32 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+type LookupPeerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupPeerRequest) Reset() {
+	*x = LookupPeerRequest{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupPeerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupPeerRequest) ProtoMessage() {}
+
+func (x *LookupPeerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupPeerRequest.ProtoReflect.Descriptor instead.
+func (*LookupPeerRequest) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *LookupPeerRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+type LookupPeerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	PublicKey     string                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	Online        bool                   `protobuf:"varint,3,opt,name=online,proto3" json:"online,omitempty"`
+	Endpoint      string                 `protobuf:"bytes,4,opt,name=endpoint,proto3" json:"endpoint,omitempty"` // only set when online
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupPeerResponse) Reset() {
+	*x = LookupPeerResponse{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupPeerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupPeerResponse) ProtoMessage() {}
+
+func (x *LookupPeerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupPeerResponse.ProtoReflect.Descriptor instead.
+func (*LookupPeerResponse) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *LookupPeerResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *LookupPeerResponse) GetPublicKey() string {
+	if x != nil {
+		return x.PublicKey
+	}
+	return ""
+}
+
+func (x *LookupPeerResponse) GetOnline() bool {
+	if x != nil {
+		return x.Online
+	}
+	return false
+}
+
+func (x *LookupPeerResponse) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
 var File_nexdesk_v1_rendezvous_proto protoreflect.FileDescriptor
 
 const file_nexdesk_v1_rendezvous_proto_rawDesc = "" +
@@ -129,7 +348,27 @@ const file_nexdesk_v1_rendezvous_proto_rawDesc = "" +
 	"\n" +
 	"public_key\x18\x02 \x01(\tR\tpublicKey\"4\n" +
 	"\x16RegisterDeviceResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\bacceptedB=Z;github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1b\x06proto3"
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"K\n" +
+	"\x10HeartbeatRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
+	"\bendpoint\x18\x02 \x01(\tR\bendpoint\"P\n" +
+	"\x11HeartbeatResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x1f\n" +
+	"\vttl_seconds\x18\x02 \x01(\rR\n" +
+	"ttlSeconds\"0\n" +
+	"\x11LookupPeerRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\"}\n" +
+	"\x12LookupPeerResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\tR\tpublicKey\x12\x16\n" +
+	"\x06online\x18\x03 \x01(\bR\x06online\x12\x1a\n" +
+	"\bendpoint\x18\x04 \x01(\tR\bendpoint2\x83\x02\n" +
+	"\x11RendezvousService\x12W\n" +
+	"\x0eRegisterDevice\x12!.nexdesk.v1.RegisterDeviceRequest\x1a\".nexdesk.v1.RegisterDeviceResponse\x12H\n" +
+	"\tHeartbeat\x12\x1c.nexdesk.v1.HeartbeatRequest\x1a\x1d.nexdesk.v1.HeartbeatResponse\x12K\n" +
+	"\n" +
+	"LookupPeer\x12\x1d.nexdesk.v1.LookupPeerRequest\x1a\x1e.nexdesk.v1.LookupPeerResponseB=Z;github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1b\x06proto3"
 
 var (
 	file_nexdesk_v1_rendezvous_proto_rawDescOnce sync.Once
@@ -143,14 +382,24 @@ func file_nexdesk_v1_rendezvous_proto_rawDescGZIP() []byte {
 	return file_nexdesk_v1_rendezvous_proto_rawDescData
 }
 
-var file_nexdesk_v1_rendezvous_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_nexdesk_v1_rendezvous_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_nexdesk_v1_rendezvous_proto_goTypes = []any{
 	(*RegisterDeviceRequest)(nil),  // 0: nexdesk.v1.RegisterDeviceRequest
 	(*RegisterDeviceResponse)(nil), // 1: nexdesk.v1.RegisterDeviceResponse
+	(*HeartbeatRequest)(nil),       // 2: nexdesk.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),      // 3: nexdesk.v1.HeartbeatResponse
+	(*LookupPeerRequest)(nil),      // 4: nexdesk.v1.LookupPeerRequest
+	(*LookupPeerResponse)(nil),     // 5: nexdesk.v1.LookupPeerResponse
 }
 var file_nexdesk_v1_rendezvous_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
+	0, // 0: nexdesk.v1.RendezvousService.RegisterDevice:input_type -> nexdesk.v1.RegisterDeviceRequest
+	2, // 1: nexdesk.v1.RendezvousService.Heartbeat:input_type -> nexdesk.v1.HeartbeatRequest
+	4, // 2: nexdesk.v1.RendezvousService.LookupPeer:input_type -> nexdesk.v1.LookupPeerRequest
+	1, // 3: nexdesk.v1.RendezvousService.RegisterDevice:output_type -> nexdesk.v1.RegisterDeviceResponse
+	3, // 4: nexdesk.v1.RendezvousService.Heartbeat:output_type -> nexdesk.v1.HeartbeatResponse
+	5, // 5: nexdesk.v1.RendezvousService.LookupPeer:output_type -> nexdesk.v1.LookupPeerResponse
+	3, // [3:6] is the sub-list for method output_type
+	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -167,9 +416,9 @@ func file_nexdesk_v1_rendezvous_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_nexdesk_v1_rendezvous_proto_rawDesc), len(file_nexdesk_v1_rendezvous_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   6,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_nexdesk_v1_rendezvous_proto_goTypes,
 		DependencyIndexes: file_nexdesk_v1_rendezvous_proto_depIdxs,
