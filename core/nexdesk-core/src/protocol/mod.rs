@@ -1,5 +1,10 @@
 //! Protobuf codec, frame reassembly, jitter/backpressure (planner tasks R-19..R-23).
 
+pub mod backpressure;
+pub mod codec;
+pub mod jitter;
+pub mod reassembly;
+
 pub use nexdesk_proto::nexdesk::v1::SessionHello;
 
 #[cfg(test)]

@@ -87,4 +87,12 @@ Host ports are intentionally non-standard (this machine runs several other proje
 - `replay.rs` — sliding-window nonce replay guard (the IPsec/DTLS anti-replay technique) for application-level messages, as defense in depth on top of TLS's own record-layer replay protection.
 - **`tests/gate_g1.rs`** — the actual Gate G1 acceptance test: two real peers establish a TCP+TLS 1.3 session, exchange a `SessionHello` handshake and protocol messages, shut down cleanly, and reconnect — all five Gate G1 criteria in one end-to-end test, nothing mocked.
 
-26 unit tests + the Gate G1 integration test, all passing locally, in Docker (Linux), and downstream in the napi addon. Protocol wire-up (frame reassembly/jitter/backpressure — R-19..R-23) and input encoding are next (Week 7), plus QUIC (R-09) whenever that gets picked up.
+**Phase 1 (Rust Core), Week 7 — Protocol/media plumbing** done: `core/nexdesk-core/src/protocol` and `src/input`
+
+- `protocol/codec.rs` — generic protobuf encode/decode helpers over `prost`.
+- `protocol/reassembly.rs` — `FrameReassembler`: buffers out-of-order chunks per `frame_id` until complete, bounded (oldest incomplete frame evicted first) so this can't become the unbounded buffer the planner's soak tests exist to catch.
+- `protocol/jitter.rs` — `JitterBuffer`: releases frames in sequence order, but skips a persistent gap once `max_wait` passes rather than blocking forever on one late frame. Deterministically testable (takes an explicit `now`/`arrived_at` instead of reading the wall clock).
+- `protocol/backpressure.rs` — `FrameQueue`: bounded, drop-oldest-on-overflow (favors latency over completeness for real-time video), tracks a `dropped_count()` for the planner's `frames_dropped` metric.
+- `input/mod.rs` — hand-rolled compact binary encoding for `InputEvent` (not protobuf — these are small, extremely high-frequency messages where general-purpose framing overhead is real cost). Decoding untrusted bytes is bounds-checked throughout and proven not to panic on malformed/truncated input.
+
+42 unit tests + the Gate G1 integration test, all passing locally, in Docker (Linux), and downstream in the napi addon, zero clippy warnings. QUIC (R-09) is still the one deliberately-deferred piece from Week 5 — see that section above.
