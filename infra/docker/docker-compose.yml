@@ -1,0 +1,64 @@
+# Local development stack (planner Section 20 "Development").
+# Usage: docker compose -f infra/docker/docker-compose.yml up --build
+#
+# `name:` is pinned explicitly — Compose otherwise derives the project name
+# from the compose file's parent directory, and this file lives in a
+# directory literally called "docker". Without a pinned name, this project
+# collides with any other project whose compose file also lives in a
+# "docker" folder (containers/networks/volumes get silently shared and
+# recreated across unrelated projects). Do not remove this.
+name: nexdesk-dev
+
+services:
+  backend:
+    build:
+      context: ../../backend
+    environment:
+      NEXDESK_ADDR: ":8080"
+    ports:
+      # Host port off 8080 — this machine's XAMPP/Tomcat already binds it.
+      - "18080:8080"
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexdesk
+      POSTGRES_PASSWORD: nexdesk
+      POSTGRES_DB: nexdesk
+    ports:
+      # Host port kept off 5432 — this machine runs several other projects'
+      # Postgres containers on the standard port; use $env:PGPORT=55432 (or
+      # -p 55432) to connect from the host. Other services on this compose
+      # network still reach it at postgres:5432 internally.
+      - "55432:5432"
+    volumes:
+      - nexdesk_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "56379:6379"
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "19090:9090"
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "13000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: nexdesk
+    depends_on:
+      - prometheus
+
+volumes:
+  nexdesk_postgres_data:

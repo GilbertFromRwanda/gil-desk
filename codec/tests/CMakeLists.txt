@@ -1,0 +1,3 @@
+add_executable(codec_smoke_test test_codec.cpp)
+target_link_libraries(codec_smoke_test PRIVATE nexdesk_codec)
+add_test(NAME codec_smoke_test COMMAND codec_smoke_test)

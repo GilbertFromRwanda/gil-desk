@@ -1,0 +1,8 @@
+[package]
+name = "nexdesk-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+nexdesk-proto = { path = "../nexdesk-proto" }
+prost = "0.13"

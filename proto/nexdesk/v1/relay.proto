@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package nexdesk.v1;
+
+option go_package = "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1";
+
+// Placeholder for relay session allocation (planner tasks G-20..G-21).
+// Relay must authenticate before allocating resources (Section 13).
+message AllocateRelayRequest {
+  string session_id = 1;
+  string auth_token = 2;
+}
+
+message AllocateRelayResponse {
+  string relay_endpoint = 1;
+}

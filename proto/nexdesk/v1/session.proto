@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package nexdesk.v1;
+
+option go_package = "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1";
+
+// Placeholder for the session protocol contract (planner task F-09/R-19).
+// Field numbers are permanent once assigned — never reuse them (Section 23).
+message SessionHello {
+  uint32 protocol_version = 1;
+  string device_id = 2;
+}
