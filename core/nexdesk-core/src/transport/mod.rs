@@ -1,22 +1,19 @@
-//! Transport abstraction over TCP/QUIC (planner tasks R-07..R-12).
+//! Transport abstraction (planner task R-07). TCP (`tcp`) is implemented
+//! and tested against a real socket; QUIC (planner task R-09) is
+//! deliberately deferred — it needs its own TLS/certificate setup and is
+//! large enough (8 points, "split if possible" per the planner's own
+//! scale) to land as a separate, focused piece of work rather than being
+//! folded into this one.
 
-pub trait Transport: Send + Sync {
-    fn name(&self) -> &'static str;
-}
+pub mod backoff;
+pub mod keepalive;
+pub mod tcp;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+use crate::error::Result;
 
-    struct NullTransport;
-    impl Transport for NullTransport {
-        fn name(&self) -> &'static str {
-            "null"
-        }
-    }
-
-    #[test]
-    fn placeholder_transport_reports_name() {
-        assert_eq!(NullTransport.name(), "null");
-    }
+/// A bidirectional, message-framed connection. Implementations own framing
+/// (TCP: length-prefixed; QUIC, once added: its native stream framing).
+pub trait Connection: Send {
+    fn send(&mut self, data: &[u8]) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn recv(&mut self) -> impl std::future::Future<Output = Result<Vec<u8>>> + Send;
 }
