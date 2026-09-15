@@ -11,11 +11,13 @@ nexdesk-core = { path = "../nexdesk-core" }
 
 [build-dependencies]
 cc = { version = "1", optional = true }
+pkg-config = { version = "0.3", optional = true }
 
 [features]
-# Compiles codec/src/codec.cpp and links it into this crate, proving the
-# Rust<->C++ boundary actually calls across languages (Gate G0). Off by
-# default because it requires a C++ compiler, which isn't guaranteed on
-# every dev machine — verify it via `docker build -f core/Dockerfile .`,
-# which runs in an image that has one. See scripts/verify-ffi.sh.
-real-codec-link = ["dep:cc"]
+# Compiles codec/src/*.cpp (including the real libx264/libavcodec encoder
+# and decoder) and links it into this crate, proving the Rust<->C++
+# boundary actually calls across languages (Gate G0). Off by default
+# because it requires a C++ compiler and libx264/libavcodec dev packages,
+# which aren't guaranteed on every dev machine — verify it via
+# `docker build -f core/Dockerfile .`, which runs in an image that has them.
+real-codec-link = ["dep:cc", "dep:pkg-config"]

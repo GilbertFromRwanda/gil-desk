@@ -112,3 +112,13 @@ cargo run --bin client -- --server 127.0.0.1:7000 --cert nexdesk_host_cert.der -
 ```
 
 47 unit tests + 2 integration tests (`gate_g1`, `cli_vertical_slice`), all passing locally, in Docker (Linux), and downstream in the napi addon, zero clippy warnings. QUIC (R-09) is still the one deliberately-deferred piece from Week 5 — see that section above. **This closes Phase 1 through Week 8**, i.e. Gate G1 and milestone M1.
+
+**Phase 2 (C++ Capture + Codec), codec integration** (R-06/R-09/R-10 — not capture yet, see below) done: `codec/src` + `core/ffi/src/codec.rs`. Real `libx264` encode and `libavcodec`/FFmpeg decode — as decided in planner Section 2, nothing here implements H.264 itself.
+
+- `codec/include/nexdesk/codec.h` — the C ABI: opaque `nd_encoder_t`/`nd_decoder_t` handles, explicit ownership (every `_create` has a `_destroy`, every "owned" buffer is freed via `nd_buffer_free`), operating on planar I420 frames. ABI version bumped 1 → 2 for this addition (both `nd_codec_abi_version()` and `core/ffi`'s `nd_ffi_abi_version()`, kept in lockstep and asserted equal by a test).
+- `codec/src/encoder.cpp` — wraps `x264_encoder_encode`, `baseline` profile, `zerolatency` preset (real-time, not throughput-optimized) via `CMakeLists.txt`'s `pkg_check_modules(x264)`.
+- `codec/src/decoder.cpp` — wraps `avcodec_send_packet`/`avcodec_receive_frame` (`libavcodec`'s H.264 decoder) via `pkg_check_modules(libavcodec libavutil)`.
+- `codec/tests/test_codec.cpp` — a synthetic I420 gradient test frame (no real capture needed) proves a real encode→decode round-trip: dimensions and buffer size match on the far side. Also covers invalid-dimension rejection and garbage input not crashing the decoder.
+- `core/ffi/src/codec.rs` — safe Rust `Encoder`/`Decoder` wrappers (RAII `Drop` for the C handles) over the same C ABI, feature-gated behind `real-codec-link` (same reasoning as the FFI proof: needs a C++ compiler + libx264/libavcodec dev packages, not guaranteed on every dev machine — verify via `core/Dockerfile`, updated to install `libx264-dev libavcodec-dev libavutil-dev`). Its own round-trip test proves the *entire* path: Rust generates a synthetic frame → C ABI → libx264 encode → libavcodec decode → C ABI → Rust gets back a valid decoded frame.
+
+Capture (C-01..C-05: the actual screen-grab, Windows/Linux/macOS-specific) is **not** implemented yet — it needs a real display, which isn't available in this dev/CI environment (headless Docker, no X server), so it couldn't be verified here the way everything else in this repo has been. Codec integration was picked first specifically because it's fully testable without one (synthetic frames stand in for a captured screen).

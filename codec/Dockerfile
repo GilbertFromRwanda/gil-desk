@@ -3,7 +3,8 @@
 # is the canonical way to build and test the codec library.
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake g++ make ca-certificates && rm -rf /var/lib/apt/lists/*
+    cmake g++ make ca-certificates pkg-config \
+    libx264-dev libavcodec-dev libavutil-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release && \

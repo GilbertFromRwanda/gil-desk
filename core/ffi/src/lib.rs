@@ -11,11 +11,15 @@ pub enum NdStatus {
     ErrInternal = 2,
 }
 
-/// ABI version check (planner Section 21 "ABI version check").
+/// ABI version check (planner Section 21 "ABI version check"). Bumped from
+/// 1 to 2 alongside codec.h: adding the encoder/decoder ABI.
 #[no_mangle]
 pub extern "C" fn nd_ffi_abi_version() -> u32 {
-    1
+    2
 }
+
+#[cfg(feature = "real-codec-link")]
+pub mod codec;
 
 #[cfg(feature = "real-codec-link")]
 extern "C" {
@@ -36,7 +40,7 @@ mod tests {
 
     #[test]
     fn abi_version_is_stable() {
-        assert_eq!(nd_ffi_abi_version(), 1);
+        assert_eq!(nd_ffi_abi_version(), 2);
     }
 
     #[cfg(feature = "real-codec-link")]
