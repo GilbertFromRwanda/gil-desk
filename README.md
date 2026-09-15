@@ -63,4 +63,13 @@ Host ports are intentionally non-standard (this machine runs several other proje
 
 ## Status
 
-Phase 0 (Foundation) functionally complete: workspaces compile and test, protobuf codegen is wired end-to-end (Rust encode/decode round-trip verified, Go types generated and building), and both cross-language boundaries are proven to actually link and call — not just build in isolation — Rust↔C++ (Docker-verified, Gate G0's "Rust can call C++") and Rust↔Node/napi-rs (`desktop/native`, F-18/F-19). No session/transport/codec/auth logic exists yet — that's Phase 1 onward. What's left before calling Phase 0 fully closed: the CI workflow exists (`.github/workflows/ci.yml`, covers Rust/Go/codec/FFI/napi across all three OSes) but hasn't actually executed on GitHub yet since nothing's pushed there.
+**Phase 0 (Foundation)** functionally complete: workspaces compile and test, protobuf codegen is wired end-to-end (Rust encode/decode round-trip verified, Go types generated and building), and both cross-language boundaries are proven to actually link and call — not just build in isolation — Rust↔C++ (Docker-verified, Gate G0's "Rust can call C++") and Rust↔Node/napi-rs (`desktop/native`, F-18/F-19). CI (`.github/workflows/ci.yml`) is pushed to GitHub but currently **disabled** (`gh workflow enable CI` to turn it back on).
+
+**Phase 1 (Rust Core), Week 4 — Session engine** done: `core/nexdesk-core/src`
+
+- `session/` — a real state machine (`Session`/`SessionState`/`SessionEvent`), not a bare enum: enforces the Gate G1 lifecycle (connect → handshake → established → disconnect → closed → reconnect), rejects illegal transitions without mutating state, 7 tests covering the happy path, failure paths, and reconnect.
+- `config.rs` — env-var config loader (`NEXDESK_*`) with validated parsing and defaults.
+- `error.rs` — crate-wide `NexError` (via `thiserror`).
+- `shutdown.rs` — coordinated cancellation (`tokio_util::CancellationToken`-backed `Shutdown` handle), tested with a real spawned task observing the signal.
+
+Transport, crypto, protocol wire-up, and input encoding (R-07 onward) are still unimplemented stubs — that's Week 5+.
