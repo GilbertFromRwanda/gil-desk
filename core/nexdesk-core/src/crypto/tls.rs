@@ -42,6 +42,23 @@ pub fn generate_dev_certificate(subject_alt_name: &str) -> Result<DevCertificate
     Ok(DevCertificate { cert_der, key_der })
 }
 
+impl DevCertificate {
+    /// Reconstructs a previously-generated dev certificate from its saved
+    /// DER bytes, so a host process can keep the same identity across
+    /// restarts instead of generating (and presenting) a new one every
+    /// time it starts — a real device's identity should be stable.
+    pub fn from_der(cert_der: Vec<u8>, key_der: Vec<u8>) -> DevCertificate {
+        DevCertificate {
+            cert_der: CertificateDer::from(cert_der),
+            key_der: PrivateKeyDer::Pkcs8(key_der.into()),
+        }
+    }
+
+    pub fn key_der_bytes(&self) -> &[u8] {
+        self.key_der.secret_der()
+    }
+}
+
 pub fn server_config(cert: &DevCertificate) -> Result<Arc<rustls::ServerConfig>> {
     ensure_crypto_provider();
     let config = rustls::ServerConfig::builder()
