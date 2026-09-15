@@ -6,6 +6,7 @@
 //! folded into this one.
 
 pub mod backoff;
+pub mod framing;
 pub mod keepalive;
 pub mod tcp;
 
