@@ -337,6 +337,222 @@ func (x *LookupPeerResponse) GetEndpoint() string {
 	return ""
 }
 
+// Grants allowed_device_id permission to request a session with
+// owner_device_id. Stands in for a real pairing UI/account model
+// (G-13..G-19, not built yet) — for now this is the only way to populate
+// the authorization list.
+type AuthorizeDeviceRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	OwnerDeviceId   string                 `protobuf:"bytes,1,opt,name=owner_device_id,json=ownerDeviceId,proto3" json:"owner_device_id,omitempty"`
+	AllowedDeviceId string                 `protobuf:"bytes,2,opt,name=allowed_device_id,json=allowedDeviceId,proto3" json:"allowed_device_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AuthorizeDeviceRequest) Reset() {
+	*x = AuthorizeDeviceRequest{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthorizeDeviceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthorizeDeviceRequest) ProtoMessage() {}
+
+func (x *AuthorizeDeviceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthorizeDeviceRequest.ProtoReflect.Descriptor instead.
+func (*AuthorizeDeviceRequest) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *AuthorizeDeviceRequest) GetOwnerDeviceId() string {
+	if x != nil {
+		return x.OwnerDeviceId
+	}
+	return ""
+}
+
+func (x *AuthorizeDeviceRequest) GetAllowedDeviceId() string {
+	if x != nil {
+		return x.AllowedDeviceId
+	}
+	return ""
+}
+
+type AuthorizeDeviceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthorizeDeviceResponse) Reset() {
+	*x = AuthorizeDeviceResponse{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthorizeDeviceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthorizeDeviceResponse) ProtoMessage() {}
+
+func (x *AuthorizeDeviceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthorizeDeviceResponse.ProtoReflect.Descriptor instead.
+func (*AuthorizeDeviceResponse) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *AuthorizeDeviceResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+// Checks the authorization list and, if allowed, issues a short-lived
+// signed session token — proof for a relay or the target device that the
+// rendezvous server already authorized this pairing, without either of
+// them needing their own database round trip (planner task G-12).
+type RequestSessionRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RequesterDeviceId string                 `protobuf:"bytes,1,opt,name=requester_device_id,json=requesterDeviceId,proto3" json:"requester_device_id,omitempty"`
+	TargetDeviceId    string                 `protobuf:"bytes,2,opt,name=target_device_id,json=targetDeviceId,proto3" json:"target_device_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RequestSessionRequest) Reset() {
+	*x = RequestSessionRequest{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestSessionRequest) ProtoMessage() {}
+
+func (x *RequestSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestSessionRequest.ProtoReflect.Descriptor instead.
+func (*RequestSessionRequest) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RequestSessionRequest) GetRequesterDeviceId() string {
+	if x != nil {
+		return x.RequesterDeviceId
+	}
+	return ""
+}
+
+func (x *RequestSessionRequest) GetTargetDeviceId() string {
+	if x != nil {
+		return x.TargetDeviceId
+	}
+	return ""
+}
+
+type RequestSessionResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Authorized       bool                   `protobuf:"varint,1,opt,name=authorized,proto3" json:"authorized,omitempty"`
+	SessionToken     string                 `protobuf:"bytes,2,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"` // empty when not authorized
+	ExpiresInSeconds uint32                 `protobuf:"varint,3,opt,name=expires_in_seconds,json=expiresInSeconds,proto3" json:"expires_in_seconds,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *RequestSessionResponse) Reset() {
+	*x = RequestSessionResponse{}
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestSessionResponse) ProtoMessage() {}
+
+func (x *RequestSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_nexdesk_v1_rendezvous_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestSessionResponse.ProtoReflect.Descriptor instead.
+func (*RequestSessionResponse) Descriptor() ([]byte, []int) {
+	return file_nexdesk_v1_rendezvous_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RequestSessionResponse) GetAuthorized() bool {
+	if x != nil {
+		return x.Authorized
+	}
+	return false
+}
+
+func (x *RequestSessionResponse) GetSessionToken() string {
+	if x != nil {
+		return x.SessionToken
+	}
+	return ""
+}
+
+func (x *RequestSessionResponse) GetExpiresInSeconds() uint32 {
+	if x != nil {
+		return x.ExpiresInSeconds
+	}
+	return 0
+}
+
 var File_nexdesk_v1_rendezvous_proto protoreflect.FileDescriptor
 
 const file_nexdesk_v1_rendezvous_proto_rawDesc = "" +
@@ -363,12 +579,28 @@ const file_nexdesk_v1_rendezvous_proto_rawDesc = "" +
 	"\n" +
 	"public_key\x18\x02 \x01(\tR\tpublicKey\x12\x16\n" +
 	"\x06online\x18\x03 \x01(\bR\x06online\x12\x1a\n" +
-	"\bendpoint\x18\x04 \x01(\tR\bendpoint2\x83\x02\n" +
+	"\bendpoint\x18\x04 \x01(\tR\bendpoint\"l\n" +
+	"\x16AuthorizeDeviceRequest\x12&\n" +
+	"\x0fowner_device_id\x18\x01 \x01(\tR\rownerDeviceId\x12*\n" +
+	"\x11allowed_device_id\x18\x02 \x01(\tR\x0fallowedDeviceId\"5\n" +
+	"\x17AuthorizeDeviceResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"q\n" +
+	"\x15RequestSessionRequest\x12.\n" +
+	"\x13requester_device_id\x18\x01 \x01(\tR\x11requesterDeviceId\x12(\n" +
+	"\x10target_device_id\x18\x02 \x01(\tR\x0etargetDeviceId\"\x8b\x01\n" +
+	"\x16RequestSessionResponse\x12\x1e\n" +
+	"\n" +
+	"authorized\x18\x01 \x01(\bR\n" +
+	"authorized\x12#\n" +
+	"\rsession_token\x18\x02 \x01(\tR\fsessionToken\x12,\n" +
+	"\x12expires_in_seconds\x18\x03 \x01(\rR\x10expiresInSeconds2\xb8\x03\n" +
 	"\x11RendezvousService\x12W\n" +
 	"\x0eRegisterDevice\x12!.nexdesk.v1.RegisterDeviceRequest\x1a\".nexdesk.v1.RegisterDeviceResponse\x12H\n" +
 	"\tHeartbeat\x12\x1c.nexdesk.v1.HeartbeatRequest\x1a\x1d.nexdesk.v1.HeartbeatResponse\x12K\n" +
 	"\n" +
-	"LookupPeer\x12\x1d.nexdesk.v1.LookupPeerRequest\x1a\x1e.nexdesk.v1.LookupPeerResponseB=Z;github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1b\x06proto3"
+	"LookupPeer\x12\x1d.nexdesk.v1.LookupPeerRequest\x1a\x1e.nexdesk.v1.LookupPeerResponse\x12Z\n" +
+	"\x0fAuthorizeDevice\x12\".nexdesk.v1.AuthorizeDeviceRequest\x1a#.nexdesk.v1.AuthorizeDeviceResponse\x12W\n" +
+	"\x0eRequestSession\x12!.nexdesk.v1.RequestSessionRequest\x1a\".nexdesk.v1.RequestSessionResponseB=Z;github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1b\x06proto3"
 
 var (
 	file_nexdesk_v1_rendezvous_proto_rawDescOnce sync.Once
@@ -382,24 +614,32 @@ func file_nexdesk_v1_rendezvous_proto_rawDescGZIP() []byte {
 	return file_nexdesk_v1_rendezvous_proto_rawDescData
 }
 
-var file_nexdesk_v1_rendezvous_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_nexdesk_v1_rendezvous_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_nexdesk_v1_rendezvous_proto_goTypes = []any{
-	(*RegisterDeviceRequest)(nil),  // 0: nexdesk.v1.RegisterDeviceRequest
-	(*RegisterDeviceResponse)(nil), // 1: nexdesk.v1.RegisterDeviceResponse
-	(*HeartbeatRequest)(nil),       // 2: nexdesk.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),      // 3: nexdesk.v1.HeartbeatResponse
-	(*LookupPeerRequest)(nil),      // 4: nexdesk.v1.LookupPeerRequest
-	(*LookupPeerResponse)(nil),     // 5: nexdesk.v1.LookupPeerResponse
+	(*RegisterDeviceRequest)(nil),   // 0: nexdesk.v1.RegisterDeviceRequest
+	(*RegisterDeviceResponse)(nil),  // 1: nexdesk.v1.RegisterDeviceResponse
+	(*HeartbeatRequest)(nil),        // 2: nexdesk.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),       // 3: nexdesk.v1.HeartbeatResponse
+	(*LookupPeerRequest)(nil),       // 4: nexdesk.v1.LookupPeerRequest
+	(*LookupPeerResponse)(nil),      // 5: nexdesk.v1.LookupPeerResponse
+	(*AuthorizeDeviceRequest)(nil),  // 6: nexdesk.v1.AuthorizeDeviceRequest
+	(*AuthorizeDeviceResponse)(nil), // 7: nexdesk.v1.AuthorizeDeviceResponse
+	(*RequestSessionRequest)(nil),   // 8: nexdesk.v1.RequestSessionRequest
+	(*RequestSessionResponse)(nil),  // 9: nexdesk.v1.RequestSessionResponse
 }
 var file_nexdesk_v1_rendezvous_proto_depIdxs = []int32{
 	0, // 0: nexdesk.v1.RendezvousService.RegisterDevice:input_type -> nexdesk.v1.RegisterDeviceRequest
 	2, // 1: nexdesk.v1.RendezvousService.Heartbeat:input_type -> nexdesk.v1.HeartbeatRequest
 	4, // 2: nexdesk.v1.RendezvousService.LookupPeer:input_type -> nexdesk.v1.LookupPeerRequest
-	1, // 3: nexdesk.v1.RendezvousService.RegisterDevice:output_type -> nexdesk.v1.RegisterDeviceResponse
-	3, // 4: nexdesk.v1.RendezvousService.Heartbeat:output_type -> nexdesk.v1.HeartbeatResponse
-	5, // 5: nexdesk.v1.RendezvousService.LookupPeer:output_type -> nexdesk.v1.LookupPeerResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
+	6, // 3: nexdesk.v1.RendezvousService.AuthorizeDevice:input_type -> nexdesk.v1.AuthorizeDeviceRequest
+	8, // 4: nexdesk.v1.RendezvousService.RequestSession:input_type -> nexdesk.v1.RequestSessionRequest
+	1, // 5: nexdesk.v1.RendezvousService.RegisterDevice:output_type -> nexdesk.v1.RegisterDeviceResponse
+	3, // 6: nexdesk.v1.RendezvousService.Heartbeat:output_type -> nexdesk.v1.HeartbeatResponse
+	5, // 7: nexdesk.v1.RendezvousService.LookupPeer:output_type -> nexdesk.v1.LookupPeerResponse
+	7, // 8: nexdesk.v1.RendezvousService.AuthorizeDevice:output_type -> nexdesk.v1.AuthorizeDeviceResponse
+	9, // 9: nexdesk.v1.RendezvousService.RequestSession:output_type -> nexdesk.v1.RequestSessionResponse
+	5, // [5:10] is the sub-list for method output_type
+	0, // [0:5] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -416,7 +656,7 @@ func file_nexdesk_v1_rendezvous_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_nexdesk_v1_rendezvous_proto_rawDesc), len(file_nexdesk_v1_rendezvous_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -56,3 +56,34 @@ func (s *Store) GetDevice(ctx context.Context, deviceID string) (*Device, error)
 	}
 	return &d, nil
 }
+
+// AuthorizeDevice grants allowedDeviceID permission to request a session
+// with ownerDeviceID (planner task G-12). Idempotent — authorizing an
+// already-authorized pair is not an error.
+func (s *Store) AuthorizeDevice(ctx context.Context, ownerDeviceID, allowedDeviceID string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO device_authorizations (owner_device_id, allowed_device_id)
+		VALUES ($1, $2)
+		ON CONFLICT (owner_device_id, allowed_device_id) DO NOTHING
+	`, ownerDeviceID, allowedDeviceID)
+	if err != nil {
+		return fmt.Errorf("authorize device %s -> %s: %w", allowedDeviceID, ownerDeviceID, err)
+	}
+	return nil
+}
+
+// IsAuthorized reports whether requesterDeviceID may request a session
+// with targetDeviceID.
+func (s *Store) IsAuthorized(ctx context.Context, targetDeviceID, requesterDeviceID string) (bool, error) {
+	var authorized bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM device_authorizations
+			WHERE owner_device_id = $1 AND allowed_device_id = $2
+		)
+	`, targetDeviceID, requesterDeviceID).Scan(&authorized)
+	if err != nil {
+		return false, fmt.Errorf("check authorization %s -> %s: %w", requesterDeviceID, targetDeviceID, err)
+	}
+	return authorized, nil
+}

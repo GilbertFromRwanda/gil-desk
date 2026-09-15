@@ -56,6 +56,43 @@ pub struct LookupPeerResponse {
     #[prost(string, tag="4")]
     pub endpoint: ::prost::alloc::string::String,
 }
+/// Grants allowed_device_id permission to request a session with
+/// owner_device_id. Stands in for a real pairing UI/account model
+/// (G-13..G-19, not built yet) — for now this is the only way to populate
+/// the authorization list.
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AuthorizeDeviceRequest {
+    #[prost(string, tag="1")]
+    pub owner_device_id: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub allowed_device_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AuthorizeDeviceResponse {
+    #[prost(bool, tag="1")]
+    pub accepted: bool,
+}
+/// Checks the authorization list and, if allowed, issues a short-lived
+/// signed session token — proof for a relay or the target device that the
+/// rendezvous server already authorized this pairing, without either of
+/// them needing their own database round trip (planner task G-12).
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RequestSessionRequest {
+    #[prost(string, tag="1")]
+    pub requester_device_id: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub target_device_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RequestSessionResponse {
+    #[prost(bool, tag="1")]
+    pub authorized: bool,
+    /// empty when not authorized
+    #[prost(string, tag="2")]
+    pub session_token: ::prost::alloc::string::String,
+    #[prost(uint32, tag="3")]
+    pub expires_in_seconds: u32,
+}
 /// Placeholder for relay session allocation (planner tasks G-20..G-21).
 /// Relay must authenticate before allocating resources (Section 13).
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
