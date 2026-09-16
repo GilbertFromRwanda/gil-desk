@@ -10,6 +10,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
@@ -18,15 +20,30 @@ import (
 const minPasswordLength = 8
 
 type AuthHandlers struct {
-	accounts    *auth.AccountStore
-	tokens      *auth.TokenIssuer
-	refresh     *auth.RefreshStore
-	loginLimits *auth.RateLimiter
-	audit       *audit.Logger
+	accounts      *auth.AccountStore
+	tokens        *auth.TokenIssuer
+	refresh       *auth.RefreshStore
+	loginLimits   *auth.RateLimiter
+	pendingLogins *auth.PendingLoginIssuer
+	audit         *audit.Logger
 }
 
-func NewAuthHandlers(accounts *auth.AccountStore, tokens *auth.TokenIssuer, refresh *auth.RefreshStore, loginLimits *auth.RateLimiter, auditLogger *audit.Logger) *AuthHandlers {
-	return &AuthHandlers{accounts: accounts, tokens: tokens, refresh: refresh, loginLimits: loginLimits, audit: auditLogger}
+func NewAuthHandlers(
+	accounts *auth.AccountStore,
+	tokens *auth.TokenIssuer,
+	refresh *auth.RefreshStore,
+	loginLimits *auth.RateLimiter,
+	pendingLogins *auth.PendingLoginIssuer,
+	auditLogger *audit.Logger,
+) *AuthHandlers {
+	return &AuthHandlers{
+		accounts:      accounts,
+		tokens:        tokens,
+		refresh:       refresh,
+		loginLimits:   loginLimits,
+		pendingLogins: pendingLogins,
+		audit:         auditLogger,
+	}
 }
 
 // logAudit logs best-effort: a failure here must never block a
@@ -35,6 +52,21 @@ func (h *AuthHandlers) logAudit(ctx context.Context, eventType, userID, subject 
 	if err := h.audit.Log(ctx, eventType, userID, subject, nil); err != nil {
 		slog.Warn("audit log failed", "event_type", eventType, "error", err)
 	}
+}
+
+// authenticate extracts and verifies the caller's JWT access token from
+// the Authorization header — the HTTP-side equivalent of
+// rendezvous.Service.authenticate for gRPC.
+func (h *AuthHandlers) authenticate(r *http.Request) (string, error) {
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return "", errors.New("missing or malformed Authorization header")
+	}
+	claims, err := h.tokens.VerifyAccessToken(token)
+	if err != nil {
+		return "", err
+	}
+	return claims.UserID, nil
 }
 
 type registerRequest struct {
@@ -54,6 +86,26 @@ type refreshRequest struct {
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+}
+
+type twoFactorRequiredResponse struct {
+	TwoFactorRequired bool   `json:"two_factor_required"`
+	PendingToken      string `json:"pending_token"`
+	ExpiresInSeconds  uint32 `json:"expires_in_seconds"`
+}
+
+type enrollTOTPResponse struct {
+	Secret     string `json:"secret"`
+	OTPAuthURL string `json:"otpauth_url"`
+}
+
+type verifyTOTPRequest struct {
+	Code string `json:"code"`
+}
+
+type loginTwoFactorRequest struct {
+	PendingToken string `json:"pending_token"`
+	Code         string `json:"code"`
 }
 
 func (h *AuthHandlers) Register(w http.ResponseWriter, r *http.Request) {
@@ -110,8 +162,112 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	if user.TOTPEnabled {
+		pendingToken, expiresAt := h.pendingLogins.Issue(user.ID)
+		writeJSON(w, http.StatusOK, twoFactorRequiredResponse{
+			TwoFactorRequired: true,
+			PendingToken:      pendingToken,
+			ExpiresInSeconds:  uint32(time.Until(expiresAt).Seconds()),
+		})
+		return
+	}
+
 	h.logAudit(r.Context(), audit.EventLoginSucceeded, user.ID, req.Email)
 	h.issueTokens(w, r.Context(), user.ID)
+}
+
+// LoginTwoFactor completes a login that Login reported as needing 2FA.
+func (h *AuthHandlers) LoginTwoFactor(w http.ResponseWriter, r *http.Request) {
+	var req loginTwoFactorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	userID, err := h.pendingLogins.Verify(req.PendingToken)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid or expired pending login token")
+		return
+	}
+
+	secret, err := h.accounts.GetTOTPSecret(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid TOTP code")
+		return
+	}
+	if !auth.ValidateTOTPCode(secret, req.Code) {
+		h.logAudit(r.Context(), audit.EventLoginTwoFactorFailed, userID, "")
+		writeError(w, http.StatusUnauthorized, "invalid TOTP code")
+		return
+	}
+
+	h.logAudit(r.Context(), audit.EventLoginSucceeded, userID, "")
+	h.issueTokens(w, r.Context(), userID)
+}
+
+// EnrollTOTP generates a new secret for the authenticated caller and
+// stores it as pending — 2FA isn't enabled until VerifyTOTP confirms the
+// user's authenticator app actually has it right, so a broken enrollment
+// can't lock anyone out.
+func (h *AuthHandlers) EnrollTOTP(w http.ResponseWriter, r *http.Request) {
+	userID, err := h.authenticate(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "missing or invalid access token")
+		return
+	}
+
+	user, err := h.accounts.GetUser(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	secret, otpauthURL, err := auth.GenerateTOTPSecret(user.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := h.accounts.SetPendingTOTPSecret(r.Context(), userID, secret); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, enrollTOTPResponse{Secret: secret, OTPAuthURL: otpauthURL})
+}
+
+// VerifyTOTP confirms enrollment by checking a code against the pending
+// secret, and only then enables 2FA on the account.
+func (h *AuthHandlers) VerifyTOTP(w http.ResponseWriter, r *http.Request) {
+	userID, err := h.authenticate(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "missing or invalid access token")
+		return
+	}
+
+	var req verifyTOTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	secret, err := h.accounts.GetTOTPSecret(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "no pending TOTP enrollment for this account")
+		return
+	}
+	if !auth.ValidateTOTPCode(secret, req.Code) {
+		writeError(w, http.StatusUnauthorized, "invalid TOTP code")
+		return
+	}
+
+	if err := h.accounts.EnableTOTP(r.Context(), userID); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	h.logAudit(r.Context(), audit.EventTwoFactorEnabled, userID, "")
+	writeJSON(w, http.StatusOK, map[string]bool{"enabled": true})
 }
 
 func (h *AuthHandlers) Refresh(w http.ResponseWriter, r *http.Request) {
