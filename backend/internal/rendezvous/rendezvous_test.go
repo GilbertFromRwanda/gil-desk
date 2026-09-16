@@ -9,10 +9,14 @@ import (
 	"github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
+	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
+	"github.com/nexdesk/nexdesk/backend/internal/auth"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
-	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
 )
 
 // Real Postgres + Redis via testcontainers — not mocked. This is exactly
@@ -38,7 +42,6 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("postgres connection string: %v", err)
 	}
-	t.Logf("postgres connection string: %s", connStr)
 
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -78,13 +81,34 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 	redisClient := redis.NewClient(redisOpts)
 	t.Cleanup(func() { _ = redisClient.Close() })
 
+	accounts := auth.NewAccountStore(pool)
+	jwt := auth.NewTokenIssuer([]byte("test-jwt-key"), time.Minute)
+
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, 30*time.Second)
 	tokens := rendezvous.NewTokenIssuer([]byte("test-signing-key"), time.Minute)
-	service := rendezvous.NewService(store, presence, tokens)
+	service := rendezvous.NewService(store, presence, tokens, jwt)
+
+	// newActor creates a fresh, uniquely-emailed user and returns an
+	// authenticated context for it (JWT attached as gRPC metadata, the
+	// same way a real client would send it).
+	newActor := func(t *testing.T, emailLocalPart string) context.Context {
+		t.Helper()
+		user, err := accounts.CreateUser(ctx, emailLocalPart+"@example.com", "password123")
+		if err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+		token, err := jwt.IssueAccessToken(user.ID)
+		if err != nil {
+			t.Fatalf("IssueAccessToken: %v", err)
+		}
+		md := metadata.Pairs("authorization", "Bearer "+token)
+		return metadata.NewIncomingContext(ctx, md)
+	}
 
 	t.Run("register then lookup finds the device but reports offline", func(t *testing.T) {
-		_, err := service.RegisterDevice(ctx, &nexdeskv1.RegisterDeviceRequest{
+		authed := newActor(t, "user-a")
+		_, err := service.RegisterDevice(authed, &nexdeskv1.RegisterDeviceRequest{
 			DeviceId:  "device-a",
 			PublicKey: "pubkey-a",
 		})
@@ -108,7 +132,8 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 	})
 
 	t.Run("heartbeat makes the device look up as online with its endpoint", func(t *testing.T) {
-		_, err := service.RegisterDevice(ctx, &nexdeskv1.RegisterDeviceRequest{
+		authed := newActor(t, "user-b")
+		_, err := service.RegisterDevice(authed, &nexdeskv1.RegisterDeviceRequest{
 			DeviceId:  "device-b",
 			PublicKey: "pubkey-b",
 		})
@@ -116,7 +141,7 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 			t.Fatalf("RegisterDevice: %v", err)
 		}
 
-		hbResp, err := service.Heartbeat(ctx, &nexdeskv1.HeartbeatRequest{
+		hbResp, err := service.Heartbeat(authed, &nexdeskv1.HeartbeatRequest{
 			DeviceId: "device-b",
 			Endpoint: "203.0.113.5:9000",
 		})
@@ -153,14 +178,15 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 	})
 
 	t.Run("re-registering a device updates its public key", func(t *testing.T) {
-		_, err := service.RegisterDevice(ctx, &nexdeskv1.RegisterDeviceRequest{
+		authed := newActor(t, "user-c")
+		_, err := service.RegisterDevice(authed, &nexdeskv1.RegisterDeviceRequest{
 			DeviceId:  "device-c",
 			PublicKey: "old-key",
 		})
 		if err != nil {
 			t.Fatalf("RegisterDevice: %v", err)
 		}
-		_, err = service.RegisterDevice(ctx, &nexdeskv1.RegisterDeviceRequest{
+		_, err = service.RegisterDevice(authed, &nexdeskv1.RegisterDeviceRequest{
 			DeviceId:  "device-c",
 			PublicKey: "new-key",
 		})
@@ -178,15 +204,21 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 	})
 
 	t.Run("session request is denied until the requester is authorized, then issues a valid token", func(t *testing.T) {
-		for _, id := range []string{"target-device", "requester-device"} {
-			if _, err := service.RegisterDevice(ctx, &nexdeskv1.RegisterDeviceRequest{
-				DeviceId: id, PublicKey: "pubkey-" + id,
-			}); err != nil {
-				t.Fatalf("RegisterDevice(%s): %v", id, err)
-			}
+		ownerCtx := newActor(t, "target-owner")
+		requesterCtx := newActor(t, "requester-owner")
+
+		if _, err := service.RegisterDevice(ownerCtx, &nexdeskv1.RegisterDeviceRequest{
+			DeviceId: "target-device", PublicKey: "pubkey-target",
+		}); err != nil {
+			t.Fatalf("RegisterDevice(target-device): %v", err)
+		}
+		if _, err := service.RegisterDevice(requesterCtx, &nexdeskv1.RegisterDeviceRequest{
+			DeviceId: "requester-device", PublicKey: "pubkey-requester",
+		}); err != nil {
+			t.Fatalf("RegisterDevice(requester-device): %v", err)
 		}
 
-		denied, err := service.RequestSession(ctx, &nexdeskv1.RequestSessionRequest{
+		denied, err := service.RequestSession(requesterCtx, &nexdeskv1.RequestSessionRequest{
 			RequesterDeviceId: "requester-device",
 			TargetDeviceId:    "target-device",
 		})
@@ -200,7 +232,7 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 			t.Fatal("expected no session token when unauthorized")
 		}
 
-		authResp, err := service.AuthorizeDevice(ctx, &nexdeskv1.AuthorizeDeviceRequest{
+		authResp, err := service.AuthorizeDevice(ownerCtx, &nexdeskv1.AuthorizeDeviceRequest{
 			OwnerDeviceId:   "target-device",
 			AllowedDeviceId: "requester-device",
 		})
@@ -211,7 +243,7 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 			t.Fatal("expected AuthorizeDevice to be accepted")
 		}
 
-		granted, err := service.RequestSession(ctx, &nexdeskv1.RequestSessionRequest{
+		granted, err := service.RequestSession(requesterCtx, &nexdeskv1.RequestSessionRequest{
 			RequesterDeviceId: "requester-device",
 			TargetDeviceId:    "target-device",
 		})
@@ -236,6 +268,77 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 			t.Fatalf("unexpected claims: %+v", claims)
 		}
 	})
+
+	// This is the G-17 fix under direct test: before it, any caller could
+	// claim to be any device_id in a request's fields. Now the caller's
+	// identity comes from a verified JWT, not a request field.
+	t.Run("a device cannot be acted on by anyone other than its owner", func(t *testing.T) {
+		ownerCtx := newActor(t, "real-owner")
+		attackerCtx := newActor(t, "attacker")
+
+		if _, err := service.RegisterDevice(ownerCtx, &nexdeskv1.RegisterDeviceRequest{
+			DeviceId: "victim-device", PublicKey: "pubkey-victim",
+		}); err != nil {
+			t.Fatalf("RegisterDevice: %v", err)
+		}
+
+		// Attacker tries to re-register (hijack) the owner's device_id.
+		_, err := service.RegisterDevice(attackerCtx, &nexdeskv1.RegisterDeviceRequest{
+			DeviceId: "victim-device", PublicKey: "attacker-key",
+		})
+		requirePermissionDenied(t, err, "re-registering someone else's device_id")
+
+		// Attacker tries to send a heartbeat (spoof presence/endpoint) for
+		// the owner's device.
+		_, err = service.Heartbeat(attackerCtx, &nexdeskv1.HeartbeatRequest{
+			DeviceId: "victim-device", Endpoint: "10.0.0.1:1",
+		})
+		requirePermissionDenied(t, err, "heartbeating someone else's device")
+
+		// Attacker tries to authorize their own device to reach the
+		// victim's, pretending to own the victim's device.
+		_, err = service.AuthorizeDevice(attackerCtx, &nexdeskv1.AuthorizeDeviceRequest{
+			OwnerDeviceId: "victim-device", AllowedDeviceId: "victim-device",
+		})
+		requirePermissionDenied(t, err, "authorizing access to someone else's device")
+
+		// Attacker registers their own device, then tries to request a
+		// session claiming to be the victim's device as the requester.
+		if _, err := service.RegisterDevice(attackerCtx, &nexdeskv1.RegisterDeviceRequest{
+			DeviceId: "attacker-device", PublicKey: "pubkey-attacker",
+		}); err != nil {
+			t.Fatalf("RegisterDevice(attacker-device): %v", err)
+		}
+		_, err = service.RequestSession(attackerCtx, &nexdeskv1.RequestSessionRequest{
+			RequesterDeviceId: "victim-device", TargetDeviceId: "attacker-device",
+		})
+		requirePermissionDenied(t, err, "impersonating someone else's device as the requester")
+	})
+
+	t.Run("authenticated RPCs reject a missing or malformed access token", func(t *testing.T) {
+		req := &nexdeskv1.RegisterDeviceRequest{DeviceId: "no-auth-device", PublicKey: "key"}
+
+		if _, err := service.RegisterDevice(ctx, req); status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("expected Unauthenticated with no metadata at all, got %v", err)
+		}
+
+		badMD := metadata.Pairs("authorization", "not-a-bearer-token")
+		if _, err := service.RegisterDevice(metadata.NewIncomingContext(ctx, badMD), req); status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("expected Unauthenticated for a non-Bearer authorization value, got %v", err)
+		}
+
+		garbageMD := metadata.Pairs("authorization", "Bearer not-a-real-jwt")
+		if _, err := service.RegisterDevice(metadata.NewIncomingContext(ctx, garbageMD), req); status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("expected Unauthenticated for a garbage token, got %v", err)
+		}
+	})
+}
+
+func requirePermissionDenied(t *testing.T, err error, action string) {
+	t.Helper()
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied when %s, got %v", action, err)
+	}
 }
 
 func waitForPing(ctx context.Context, pool *pgxpool.Pool, attempts int, delay time.Duration) error {
