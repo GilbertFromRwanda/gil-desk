@@ -4,13 +4,31 @@ package nexdesk.v1;
 
 option go_package = "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1";
 
-// Placeholder for relay session allocation (planner tasks G-20..G-21).
-// Relay must authenticate before allocating resources (Section 13).
-message AllocateRelayRequest {
-  string session_id = 1;
-  string auth_token = 2;
+// Byte relay for when a direct peer-to-peer connection isn't possible
+// (planner Gate G3's "if direct fails -> relay" step, tasks G-20/G-21).
+// Both sides of a session dial Stream and send the *same*
+// RequestSession-issued session_token (RendezvousService, G-12) as their
+// first frame; the relay pairs the two streams by that token and forwards
+// every frame after it byte-for-byte in both directions. The token itself
+// is the only authentication a peer needs to present here — it already
+// proves the rendezvous server checked the pairing was authorized, so the
+// relay doesn't need its own database round trip (same reasoning
+// TokenIssuer's own doc comment gives for why it exists at all).
+service RelayService {
+  rpc Stream(stream RelayFrame) returns (stream RelayFrame);
 }
 
-message AllocateRelayResponse {
-  string relay_endpoint = 1;
+message RelayFrame {
+  oneof payload {
+    // First frame only, from both sides: the token to pair this stream
+    // against. Any frame after the first with session_token set (instead
+    // of data) is a protocol error.
+    string session_token = 1;
+    // Every frame after the first: opaque bytes forwarded verbatim to
+    // the peer. The relay never inspects or interprets this payload —
+    // whatever's inside (encrypted session frames, in the real end-to-end
+    // TLS-secured protocol Phase 1 already built) is between the two
+    // peers, not the relay.
+    bytes data = 2;
+  }
 }

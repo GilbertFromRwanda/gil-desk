@@ -93,18 +93,27 @@ pub struct RequestSessionResponse {
     #[prost(uint32, tag="3")]
     pub expires_in_seconds: u32,
 }
-/// Placeholder for relay session allocation (planner tasks G-20..G-21).
-/// Relay must authenticate before allocating resources (Section 13).
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct AllocateRelayRequest {
-    #[prost(string, tag="1")]
-    pub session_id: ::prost::alloc::string::String,
-    #[prost(string, tag="2")]
-    pub auth_token: ::prost::alloc::string::String,
+pub struct RelayFrame {
+    #[prost(oneof="relay_frame::Payload", tags="1, 2")]
+    pub payload: ::core::option::Option<relay_frame::Payload>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct AllocateRelayResponse {
-    #[prost(string, tag="1")]
-    pub relay_endpoint: ::prost::alloc::string::String,
+/// Nested message and enum types in `RelayFrame`.
+pub mod relay_frame {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Payload {
+        /// First frame only, from both sides: the token to pair this stream
+        /// against. Any frame after the first with session_token set (instead
+        /// of data) is a protocol error.
+        #[prost(string, tag="1")]
+        SessionToken(::prost::alloc::string::String),
+        /// Every frame after the first: opaque bytes forwarded verbatim to
+        /// the peer. The relay never inspects or interprets this payload —
+        /// whatever's inside (encrypted session frames, in the real end-to-end
+        /// TLS-secured protocol Phase 1 already built) is between the two
+        /// peers, not the relay.
+        #[prost(bytes, tag="2")]
+        Data(::prost::alloc::vec::Vec<u8>),
+    }
 }
 // @@protoc_insertion_point(module)

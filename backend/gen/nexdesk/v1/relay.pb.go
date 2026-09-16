@@ -21,30 +21,31 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Placeholder for relay session allocation (planner tasks G-20..G-21).
-// Relay must authenticate before allocating resources (Section 13).
-type AllocateRelayRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	AuthToken     string                 `protobuf:"bytes,2,opt,name=auth_token,json=authToken,proto3" json:"auth_token,omitempty"`
+type RelayFrame struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*RelayFrame_SessionToken
+	//	*RelayFrame_Data
+	Payload       isRelayFrame_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AllocateRelayRequest) Reset() {
-	*x = AllocateRelayRequest{}
+func (x *RelayFrame) Reset() {
+	*x = RelayFrame{}
 	mi := &file_nexdesk_v1_relay_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AllocateRelayRequest) String() string {
+func (x *RelayFrame) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AllocateRelayRequest) ProtoMessage() {}
+func (*RelayFrame) ProtoMessage() {}
 
-func (x *AllocateRelayRequest) ProtoReflect() protoreflect.Message {
+func (x *RelayFrame) ProtoReflect() protoreflect.Message {
 	mi := &file_nexdesk_v1_relay_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -56,68 +57,59 @@ func (x *AllocateRelayRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AllocateRelayRequest.ProtoReflect.Descriptor instead.
-func (*AllocateRelayRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use RelayFrame.ProtoReflect.Descriptor instead.
+func (*RelayFrame) Descriptor() ([]byte, []int) {
 	return file_nexdesk_v1_relay_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *AllocateRelayRequest) GetSessionId() string {
+func (x *RelayFrame) GetPayload() isRelayFrame_Payload {
 	if x != nil {
-		return x.SessionId
+		return x.Payload
 	}
-	return ""
+	return nil
 }
 
-func (x *AllocateRelayRequest) GetAuthToken() string {
+func (x *RelayFrame) GetSessionToken() string {
 	if x != nil {
-		return x.AuthToken
-	}
-	return ""
-}
-
-type AllocateRelayResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RelayEndpoint string                 `protobuf:"bytes,1,opt,name=relay_endpoint,json=relayEndpoint,proto3" json:"relay_endpoint,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AllocateRelayResponse) Reset() {
-	*x = AllocateRelayResponse{}
-	mi := &file_nexdesk_v1_relay_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AllocateRelayResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AllocateRelayResponse) ProtoMessage() {}
-
-func (x *AllocateRelayResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_nexdesk_v1_relay_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
+		if x, ok := x.Payload.(*RelayFrame_SessionToken); ok {
+			return x.SessionToken
 		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AllocateRelayResponse.ProtoReflect.Descriptor instead.
-func (*AllocateRelayResponse) Descriptor() ([]byte, []int) {
-	return file_nexdesk_v1_relay_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *AllocateRelayResponse) GetRelayEndpoint() string {
-	if x != nil {
-		return x.RelayEndpoint
 	}
 	return ""
 }
+
+func (x *RelayFrame) GetData() []byte {
+	if x != nil {
+		if x, ok := x.Payload.(*RelayFrame_Data); ok {
+			return x.Data
+		}
+	}
+	return nil
+}
+
+type isRelayFrame_Payload interface {
+	isRelayFrame_Payload()
+}
+
+type RelayFrame_SessionToken struct {
+	// First frame only, from both sides: the token to pair this stream
+	// against. Any frame after the first with session_token set (instead
+	// of data) is a protocol error.
+	SessionToken string `protobuf:"bytes,1,opt,name=session_token,json=sessionToken,proto3,oneof"`
+}
+
+type RelayFrame_Data struct {
+	// Every frame after the first: opaque bytes forwarded verbatim to
+	// the peer. The relay never inspects or interprets this payload —
+	// whatever's inside (encrypted session frames, in the real end-to-end
+	// TLS-secured protocol Phase 1 already built) is between the two
+	// peers, not the relay.
+	Data []byte `protobuf:"bytes,2,opt,name=data,proto3,oneof"`
+}
+
+func (*RelayFrame_SessionToken) isRelayFrame_Payload() {}
+
+func (*RelayFrame_Data) isRelayFrame_Payload() {}
 
 var File_nexdesk_v1_relay_proto protoreflect.FileDescriptor
 
@@ -125,13 +117,13 @@ const file_nexdesk_v1_relay_proto_rawDesc = "" +
 	"\n" +
 	"\x16nexdesk/v1/relay.proto\x12\n" +
 	"nexdesk.v1\"T\n" +
-	"\x14AllocateRelayRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
-	"\n" +
-	"auth_token\x18\x02 \x01(\tR\tauthToken\">\n" +
-	"\x15AllocateRelayResponse\x12%\n" +
-	"\x0erelay_endpoint\x18\x01 \x01(\tR\rrelayEndpointB=Z;github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1b\x06proto3"
+	"RelayFrame\x12%\n" +
+	"\rsession_token\x18\x01 \x01(\tH\x00R\fsessionToken\x12\x14\n" +
+	"\x04data\x18\x02 \x01(\fH\x00R\x04dataB\t\n" +
+	"\apayload2L\n" +
+	"\fRelayService\x12<\n" +
+	"\x06Stream\x12\x16.nexdesk.v1.RelayFrame\x1a\x16.nexdesk.v1.RelayFrame(\x010\x01B=Z;github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1b\x06proto3"
 
 var (
 	file_nexdesk_v1_relay_proto_rawDescOnce sync.Once
@@ -145,14 +137,15 @@ func file_nexdesk_v1_relay_proto_rawDescGZIP() []byte {
 	return file_nexdesk_v1_relay_proto_rawDescData
 }
 
-var file_nexdesk_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_nexdesk_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_nexdesk_v1_relay_proto_goTypes = []any{
-	(*AllocateRelayRequest)(nil),  // 0: nexdesk.v1.AllocateRelayRequest
-	(*AllocateRelayResponse)(nil), // 1: nexdesk.v1.AllocateRelayResponse
+	(*RelayFrame)(nil), // 0: nexdesk.v1.RelayFrame
 }
 var file_nexdesk_v1_relay_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
+	0, // 0: nexdesk.v1.RelayService.Stream:input_type -> nexdesk.v1.RelayFrame
+	0, // 1: nexdesk.v1.RelayService.Stream:output_type -> nexdesk.v1.RelayFrame
+	1, // [1:2] is the sub-list for method output_type
+	0, // [0:1] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -163,15 +156,19 @@ func file_nexdesk_v1_relay_proto_init() {
 	if File_nexdesk_v1_relay_proto != nil {
 		return
 	}
+	file_nexdesk_v1_relay_proto_msgTypes[0].OneofWrappers = []any{
+		(*RelayFrame_SessionToken)(nil),
+		(*RelayFrame_Data)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_nexdesk_v1_relay_proto_rawDesc), len(file_nexdesk_v1_relay_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   1,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_nexdesk_v1_relay_proto_goTypes,
 		DependencyIndexes: file_nexdesk_v1_relay_proto_depIdxs,
