@@ -60,6 +60,18 @@ func (s *Service) Stream(stream nexdeskv1.RelayService_StreamServer) error {
 		return status.Error(codes.Unauthenticated, "invalid or expired session token")
 	}
 
+	// grpc-go otherwise defers sending response headers until this
+	// handler's first Send — but neither side of a pairing sends
+	// anything until it already knows it's connected (a client
+	// implementation, e.g. rendezvous/relay.rs on the Rust side, learns
+	// "connected" from response headers arriving). Without this explicit
+	// flush, both sides would wait forever for headers that only arrive
+	// once the other side sends first: a real deadlock hit and fixed
+	// during Rust-client integration, not a hypothetical one.
+	if err := stream.SendHeader(nil); err != nil {
+		return status.Errorf(codes.Internal, "send header: %v", err)
+	}
+
 	s.mu.Lock()
 	if peer, ok := s.waiting[token]; ok {
 		delete(s.waiting, token)
