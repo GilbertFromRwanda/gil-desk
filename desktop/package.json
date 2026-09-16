@@ -8,7 +8,8 @@
     "dev:renderer": "vite",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
-    "build": "npm run build:renderer && npm run build:main",
+    "build:preload": "tsc -p tsconfig.preload.json",
+    "build": "npm run build:renderer && npm run build:main && npm run build:preload",
     "start": "electron dist/main/index.js",
     "test": "echo \"no tests yet\" && exit 0"
   },
