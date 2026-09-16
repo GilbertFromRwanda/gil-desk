@@ -1,31 +1,74 @@
 //! CLI host (planner task R-25) — the vertical slice's server side.
-//! Accepts one or more TCP+TLS connections, completes the SessionHello
-//! handshake, and holds each session open with a heartbeat until the
-//! peer disconnects or the process is asked to shut down (Ctrl+C).
+//! Two ways to be reached, chosen by CLI flags:
+//!   --bind <addr>                           direct TLS-over-TCP: listens,
+//!                                           accepts any number of
+//!                                           connections concurrently.
+//!   --relay <addr> --session-token <token>  through the Go relay (Gate
+//!                                           G3's "if direct fails ->
+//!                                           relay"): dials out (there's
+//!                                           no listening concept over a
+//!                                           relay — both sides connect
+//!                                           to it), handles exactly one
+//!                                           session (a token is single-
+//!                                           session by design), then
+//!                                           exits.
 //!
 //! The dev TLS certificate this generates has no CA behind it, so the
-//! client must be told to trust this *exact* cert (see --cert-out below
-//! and client.rs --cert) — see crypto::tls module docs for why that's a
-//! deliberate pin, not a shortcut, and what production needs instead.
+//! direct-mode client must be told to trust this *exact* cert (see
+//! --cert-out below and client.rs --cert) — see crypto::tls module docs
+//! for why that's a deliberate pin, not a shortcut, and what production
+//! needs instead. Relay mode doesn't use this certificate at all — trust
+//! there comes entirely from the session token (see rendezvous::relay).
 
+#[path = "common/mod.rs"]
+mod common;
+
+use common::{arg_value, run_handshake_and_heartbeat, AnyConnection};
 use nexdesk_core::crypto::tls;
 use nexdesk_core::error::Result;
-use nexdesk_core::protocol::{self, SessionHello};
+use nexdesk_core::rendezvous::relay;
 use nexdesk_core::session::{Session, SessionEvent};
 use nexdesk_core::shutdown::Shutdown;
-use nexdesk_core::transport::keepalive::Heartbeat;
 use nexdesk_core::transport::tcp::TcpListener;
-use nexdesk_core::transport::Connection;
 use std::io::Write;
-use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let bind_addr = arg_value(&args, "--bind").unwrap_or_else(|| "127.0.0.1:7000".to_string());
     let device_id = arg_value(&args, "--device-id").unwrap_or_else(|| "nexdesk-host".to_string());
+
+    let shutdown = Shutdown::new();
+    {
+        let shutdown = shutdown.clone();
+        tokio::spawn(async move {
+            let _ = tokio::signal::ctrl_c().await;
+            shutdown.trigger();
+        });
+    }
+
+    if let Some(relay_addr) = arg_value(&args, "--relay") {
+        let session_token =
+            arg_value(&args, "--session-token").expect("--session-token <token> is required with --relay");
+
+        let mut session = Session::new();
+        session.handle(SessionEvent::Connect).ok();
+        session.handle(SessionEvent::HandshakeStart).ok();
+        let result = async {
+            let conn = relay::connect(&relay_addr, &session_token).await?;
+            run_handshake_and_heartbeat(AnyConnection::Relay(Box::new(conn)), &device_id, &mut session, &shutdown).await
+        }
+        .await;
+        if let Err(e) = result {
+            eprintln!("session error: {e}");
+        }
+        let _ = std::io::stdout().flush();
+        println!("SHUTDOWN");
+        return;
+    }
+
+    let bind_addr = arg_value(&args, "--bind").unwrap_or_else(|| "127.0.0.1:7000".to_string());
     let cert_path =
         arg_value(&args, "--cert-out").unwrap_or_else(|| "nexdesk_host_cert.der".to_string());
     let key_path = format!("{cert_path}.key");
@@ -54,15 +97,6 @@ async fn main() {
     println!("CERT {cert_path}");
     let _ = std::io::stdout().flush();
 
-    let shutdown = Shutdown::new();
-    {
-        let shutdown = shutdown.clone();
-        tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            shutdown.trigger();
-        });
-    }
-
     loop {
         tokio::select! {
             _ = shutdown.triggered() => {
@@ -78,7 +112,7 @@ async fn main() {
                 let device_id = device_id.clone();
                 let shutdown = shutdown.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_connection(acceptor, tcp, device_id, shutdown).await {
+                    if let Err(e) = handle_direct_connection(acceptor, tcp, device_id, shutdown).await {
                         eprintln!("connection error: {e}");
                     }
                 });
@@ -87,7 +121,7 @@ async fn main() {
     }
 }
 
-async fn handle_connection(
+async fn handle_direct_connection(
     acceptor: TlsAcceptor,
     tcp: TcpStream,
     device_id: String,
@@ -97,48 +131,6 @@ async fn handle_connection(
     session.handle(SessionEvent::Connect).ok();
     session.handle(SessionEvent::HandshakeStart).ok();
 
-    let mut conn = tls::accept(&acceptor, tcp).await?;
-
-    let their_hello_bytes = conn.recv().await?;
-    let their_hello: SessionHello = protocol::codec::decode(&their_hello_bytes)?;
-    let my_hello = SessionHello {
-        protocol_version: 1,
-        device_id: device_id.clone(),
-    };
-    conn.send(&protocol::codec::encode(&my_hello)).await?;
-
-    session.handle(SessionEvent::HandshakeComplete).ok();
-    println!("ESTABLISHED peer={}", their_hello.device_id);
-    let _ = std::io::stdout().flush();
-
-    let mut heartbeat = Heartbeat::new(Duration::from_secs(5));
-    loop {
-        tokio::select! {
-            _ = shutdown.triggered() => break,
-            _ = heartbeat.tick() => {
-                if conn.send(b"PING").await.is_err() {
-                    break;
-                }
-            }
-            result = conn.recv() => {
-                match result {
-                    Ok(bytes) => println!("RECV {}", String::from_utf8_lossy(&bytes)),
-                    Err(_) => break, // peer disconnected
-                }
-            }
-        }
-    }
-
-    session.handle(SessionEvent::Disconnect).ok();
-    session.handle(SessionEvent::Closed).ok();
-    println!("CLOSED peer={}", their_hello.device_id);
-    let _ = std::io::stdout().flush();
-    Ok(())
-}
-
-fn arg_value(args: &[String], name: &str) -> Option<String> {
-    args.iter()
-        .position(|a| a == name)
-        .and_then(|i| args.get(i + 1))
-        .cloned()
+    let conn = tls::accept(&acceptor, tcp).await?;
+    run_handshake_and_heartbeat(AnyConnection::Tls(Box::new(conn)), &device_id, &mut session, &shutdown).await
 }
