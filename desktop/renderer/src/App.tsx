@@ -9,6 +9,7 @@
 // OS-backed secure store (Electron's `safeStorage`, keychain/DPAPI-backed)
 // wired through its own IPC call — not implemented yet.
 import { useState } from "react";
+import ConnectScreen from "./ConnectScreen";
 
 type View = "auth" | "twoFactor" | "session";
 type Mode = "login" | "register";
@@ -88,16 +89,7 @@ export default function App() {
   }
 
   if (view === "session") {
-    return (
-      <div style={{ fontFamily: "sans-serif", padding: 24 }}>
-        <h1>NexDesk</h1>
-        <p>Logged in as <strong>{sessionEmail}</strong>.</p>
-        <p style={{ fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>
-          access token: {accessToken.slice(0, 24)}...
-        </p>
-        <button onClick={logOut}>Log out</button>
-      </div>
-    );
+    return <ConnectScreen accessToken={accessToken} email={sessionEmail} onLogOut={logOut} />;
   }
 
   if (view === "twoFactor") {

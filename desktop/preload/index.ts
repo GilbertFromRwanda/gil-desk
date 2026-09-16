@@ -15,6 +15,24 @@ interface AuthResult {
   body: unknown;
 }
 
+interface DeviceIdentity {
+  deviceId: string;
+  publicKeyPem: string;
+}
+
+interface RegisterDeviceResult {
+  ok: boolean;
+  message: string;
+}
+
+interface RequestSessionResult {
+  ok: boolean;
+  authorized: boolean;
+  sessionToken: string;
+  expiresInSeconds: number;
+  message: string;
+}
+
 contextBridge.exposeInMainWorld("nexdesk", {
   version: "0.1.0",
   auth: {
@@ -24,5 +42,12 @@ contextBridge.exposeInMainWorld("nexdesk", {
       ipcRenderer.invoke("auth:login", email, password),
     loginTwoFactor: (pendingToken: string, code: string): Promise<AuthResult> =>
       ipcRenderer.invoke("auth:loginTwoFactor", pendingToken, code),
+  },
+  device: {
+    getIdentity: (): Promise<DeviceIdentity> => ipcRenderer.invoke("device:getIdentity"),
+    register: (accessToken: string): Promise<RegisterDeviceResult> =>
+      ipcRenderer.invoke("device:register", accessToken),
+    requestSession: (accessToken: string, targetDeviceId: string): Promise<RequestSessionResult> =>
+      ipcRenderer.invoke("device:requestSession", accessToken, targetDeviceId),
   },
 });
