@@ -16,6 +16,23 @@ rustls = { version = "0.23", default-features = false, features = ["std", "tls12
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 rcgen = "0.13"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+# Rust-side client for the Go relay's gRPC service (rendezvous/relay.rs).
+# No generated service stubs (tonic-build needs protoc at cargo-build time,
+# which this project deliberately avoids locally — see the Docker-based
+# prost codegen pipeline this crate's own generated/ dir comes from) — the
+# low-level tonic::client::Grpc API is used directly instead, against the
+# RelayFrame message type prost already generates.
+tonic = { version = "0.12", default-features = false, features = ["transport", "codegen", "prost"] }
+http = "1"
+tokio-stream = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "process"] }
+# Test-only: constructs a session token in the exact format
+# backend/internal/rendezvous/token.go signs, to test the relay client
+# against a real running Go relay without first needing a Rust-side
+# RequestSession client (a separate, larger piece of future work — see
+# rendezvous/relay.rs's module docs).
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
