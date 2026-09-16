@@ -30,7 +30,17 @@ func TestTokenRejectsTampering(t *testing.T) {
 	issuer := NewTokenIssuer([]byte("test-signing-key"), time.Minute)
 	token, _ := issuer.Issue("device-a", "device-b")
 
-	tampered := token[:len(token)-1] + "x"
+	// Flip the last character to something guaranteed different from what
+	// was already there — using a fixed replacement like "x" is flaky:
+	// ~1/64 of the time (base64url alphabet) the original character
+	// already is "x", making this a no-op that doesn't tamper anything.
+	last := token[len(token)-1]
+	replacement := byte('a')
+	if last == replacement {
+		replacement = 'b'
+	}
+	tampered := token[:len(token)-1] + string(replacement)
+
 	if _, err := issuer.Verify(tampered); err == nil {
 		t.Fatal("expected tampered token to be rejected")
 	}

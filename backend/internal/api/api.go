@@ -16,13 +16,14 @@ import (
 const minPasswordLength = 8
 
 type AuthHandlers struct {
-	accounts *auth.AccountStore
-	tokens   *auth.TokenIssuer
-	refresh  *auth.RefreshStore
+	accounts    *auth.AccountStore
+	tokens      *auth.TokenIssuer
+	refresh     *auth.RefreshStore
+	loginLimits *auth.RateLimiter
 }
 
-func NewAuthHandlers(accounts *auth.AccountStore, tokens *auth.TokenIssuer, refresh *auth.RefreshStore) *AuthHandlers {
-	return &AuthHandlers{accounts: accounts, tokens: tokens, refresh: refresh}
+func NewAuthHandlers(accounts *auth.AccountStore, tokens *auth.TokenIssuer, refresh *auth.RefreshStore, loginLimits *auth.RateLimiter) *AuthHandlers {
+	return &AuthHandlers{accounts: accounts, tokens: tokens, refresh: refresh, loginLimits: loginLimits}
 }
 
 type registerRequest struct {
@@ -75,12 +76,26 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allowed, err := h.loginLimits.Allow(r.Context(), req.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
+		return
+	}
+
 	user, err := h.accounts.VerifyPassword(r.Context(), req.Email, req.Password)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
+	if err := h.loginLimits.Reset(r.Context(), req.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	h.issueTokens(w, r.Context(), user.ID)
 }
 
