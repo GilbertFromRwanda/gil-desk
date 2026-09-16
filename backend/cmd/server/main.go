@@ -23,6 +23,7 @@ import (
 	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
+	"github.com/nexdesk/nexdesk/backend/internal/relay"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
 )
 
@@ -92,8 +93,11 @@ func main() {
 	sessionTokens := rendezvous.NewTokenIssuer(sessionSigningKey, sessionTokenTTL)
 	rendezvousService := rendezvous.NewService(store, presence, sessionTokens, accessTokens, auditLogger)
 
+	relayService := relay.NewService(sessionTokens)
+
 	grpcServer := grpc.NewServer()
 	nexdeskv1.RegisterRendezvousServiceServer(grpcServer, rendezvousService)
+	nexdeskv1.RegisterRelayServiceServer(grpcServer, relayService)
 
 	grpcListener, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
