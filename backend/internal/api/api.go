@@ -8,8 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
+	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
 )
 
@@ -20,10 +22,19 @@ type AuthHandlers struct {
 	tokens      *auth.TokenIssuer
 	refresh     *auth.RefreshStore
 	loginLimits *auth.RateLimiter
+	audit       *audit.Logger
 }
 
-func NewAuthHandlers(accounts *auth.AccountStore, tokens *auth.TokenIssuer, refresh *auth.RefreshStore, loginLimits *auth.RateLimiter) *AuthHandlers {
-	return &AuthHandlers{accounts: accounts, tokens: tokens, refresh: refresh, loginLimits: loginLimits}
+func NewAuthHandlers(accounts *auth.AccountStore, tokens *auth.TokenIssuer, refresh *auth.RefreshStore, loginLimits *auth.RateLimiter, auditLogger *audit.Logger) *AuthHandlers {
+	return &AuthHandlers{accounts: accounts, tokens: tokens, refresh: refresh, loginLimits: loginLimits, audit: auditLogger}
+}
+
+// logAudit logs best-effort: a failure here must never block a
+// legitimate request, so it's a warning, not an error response.
+func (h *AuthHandlers) logAudit(ctx context.Context, eventType, userID, subject string) {
+	if err := h.audit.Log(ctx, eventType, userID, subject, nil); err != nil {
+		slog.Warn("audit log failed", "event_type", eventType, "error", err)
+	}
 }
 
 type registerRequest struct {
@@ -66,6 +77,7 @@ func (h *AuthHandlers) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.logAudit(r.Context(), audit.EventUserRegistered, user.ID, req.Email)
 	h.issueTokens(w, r.Context(), user.ID)
 }
 
@@ -82,12 +94,14 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !allowed {
+		h.logAudit(r.Context(), audit.EventLoginRateLimited, "", req.Email)
 		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
 		return
 	}
 
 	user, err := h.accounts.VerifyPassword(r.Context(), req.Email, req.Password)
 	if err != nil {
+		h.logAudit(r.Context(), audit.EventLoginFailed, "", req.Email)
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
@@ -96,6 +110,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	h.logAudit(r.Context(), audit.EventLoginSucceeded, user.ID, req.Email)
 	h.issueTokens(w, r.Context(), user.ID)
 }
 

@@ -20,6 +20,7 @@ import (
 
 	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
 	"github.com/nexdesk/nexdesk/backend/internal/api"
+	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
@@ -71,16 +72,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	auditLogger := audit.NewLogger(pool)
+
 	accounts := auth.NewAccountStore(pool)
 	accessTokens := auth.NewTokenIssuer(jwtSigningKey, accessTokenTTL)
 	refreshTokens := auth.NewRefreshStore(pool, refreshTokenTTL)
 	loginLimits := auth.NewRateLimiter(redisClient, loginRateLimitAttempts, loginRateLimitWindow)
-	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens, loginLimits)
+	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens, loginLimits, auditLogger)
 
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, presenceTTL)
 	sessionTokens := rendezvous.NewTokenIssuer(sessionSigningKey, sessionTokenTTL)
-	rendezvousService := rendezvous.NewService(store, presence, sessionTokens, accessTokens)
+	rendezvousService := rendezvous.NewService(store, presence, sessionTokens, accessTokens, auditLogger)
 
 	grpcServer := grpc.NewServer()
 	nexdeskv1.RegisterRendezvousServiceServer(grpcServer, rendezvousService)

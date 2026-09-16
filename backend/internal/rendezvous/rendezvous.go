@@ -11,6 +11,7 @@ package rendezvous
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
+	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
 )
@@ -29,10 +31,19 @@ type Service struct {
 	presence *registry.Presence
 	tokens   *TokenIssuer
 	jwt      *auth.TokenIssuer
+	audit    *audit.Logger
 }
 
-func NewService(store *registry.Store, presence *registry.Presence, tokens *TokenIssuer, jwt *auth.TokenIssuer) *Service {
-	return &Service{store: store, presence: presence, tokens: tokens, jwt: jwt}
+func NewService(store *registry.Store, presence *registry.Presence, tokens *TokenIssuer, jwt *auth.TokenIssuer, auditLogger *audit.Logger) *Service {
+	return &Service{store: store, presence: presence, tokens: tokens, jwt: jwt, audit: auditLogger}
+}
+
+// logAudit logs best-effort: a failure here must never block a
+// legitimate RPC, so it's a warning, not an RPC error.
+func (s *Service) logAudit(ctx context.Context, eventType, userID, subject string) {
+	if err := s.audit.Log(ctx, eventType, userID, subject, nil); err != nil {
+		slog.Warn("audit log failed", "event_type", eventType, "error", err)
+	}
 }
 
 // authenticate extracts and verifies the caller's JWT access token from
@@ -74,6 +85,7 @@ func (s *Service) RegisterDevice(
 		}
 		return nil, status.Errorf(codes.Internal, "register device: %v", err)
 	}
+	s.logAudit(ctx, audit.EventDeviceRegistered, userID, req.GetDeviceId())
 	return &nexdeskv1.RegisterDeviceResponse{Accepted: true}, nil
 }
 
@@ -145,6 +157,7 @@ func (s *Service) AuthorizeDevice(
 	if err := s.store.AuthorizeDevice(ctx, req.GetOwnerDeviceId(), req.GetAllowedDeviceId()); err != nil {
 		return nil, status.Errorf(codes.Internal, "authorize device: %v", err)
 	}
+	s.logAudit(ctx, audit.EventDeviceAuthorized, userID, req.GetOwnerDeviceId()+" -> "+req.GetAllowedDeviceId())
 	return &nexdeskv1.AuthorizeDeviceResponse{Accepted: true}, nil
 }
 
