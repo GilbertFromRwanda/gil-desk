@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
+	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
@@ -87,7 +88,8 @@ func TestRendezvousServiceAgainstRealPostgresAndRedis(t *testing.T) {
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, 30*time.Second)
 	tokens := rendezvous.NewTokenIssuer([]byte("test-signing-key"), time.Minute)
-	service := rendezvous.NewService(store, presence, tokens, jwt)
+	auditLogger := audit.NewLogger(pool)
+	service := rendezvous.NewService(store, presence, tokens, jwt, auditLogger)
 
 	// newActor creates a fresh, uniquely-emailed user and returns an
 	// authenticated context for it (JWT attached as gRPC metadata, the
