@@ -33,6 +33,33 @@ interface RequestSessionResult {
   message: string;
 }
 
+interface CapturedEvent {
+  kind: "keyDown" | "keyUp" | "mouseMove" | "mouseButton" | "scroll";
+  code?: number;
+  x?: number;
+  y?: number;
+  button?: number;
+  down?: boolean;
+  dx?: number;
+  dy?: number;
+}
+
+interface DecodedInputEvent {
+  kind: string;
+  code?: number;
+  x?: number;
+  y?: number;
+  button?: number;
+  down?: boolean;
+  dx?: number;
+  dy?: number;
+}
+
+interface InputRoundTripResult {
+  encodedHex: string;
+  decoded: DecodedInputEvent;
+}
+
 contextBridge.exposeInMainWorld("nexdesk", {
   version: "0.1.0",
   auth: {
@@ -49,5 +76,9 @@ contextBridge.exposeInMainWorld("nexdesk", {
       ipcRenderer.invoke("device:register", accessToken),
     requestSession: (accessToken: string, targetDeviceId: string): Promise<RequestSessionResult> =>
       ipcRenderer.invoke("device:requestSession", accessToken, targetDeviceId),
+  },
+  input: {
+    roundTrip: (event: CapturedEvent): Promise<InputRoundTripResult> =>
+      ipcRenderer.invoke("input:roundTrip", event),
   },
 });

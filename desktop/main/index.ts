@@ -4,6 +4,8 @@ import path from "node:path";
 import * as authClient from "./authClient";
 import * as rendezvousClient from "./rendezvousClient";
 import { loadOrCreateDeviceIdentity } from "./deviceIdentity";
+import native from "./nativeBridge";
+import type { DecodedInputEvent } from "./nativeBridge";
 
 const backendConfig = { baseUrl: process.env.NEXDESK_BACKEND_URL ?? "http://localhost:8080" };
 const grpcAddr = process.env.NEXDESK_GRPC_ADDR ?? "localhost:9090";
@@ -54,6 +56,44 @@ ipcMain.handle("device:register", (_event, accessToken: string) => {
 ipcMain.handle("device:requestSession", (_event, accessToken: string, targetDeviceId: string) => {
   const identity = loadOrCreateDeviceIdentity();
   return rendezvousClient.requestSession(grpcAddr, accessToken, identity.deviceId, targetDeviceId);
+});
+
+// Encodes a captured DOM input event through the real native addon, then
+// immediately decodes what it just produced through the same addon
+// (planner E-14/E-15/E-16) — the renderer never fabricates the "it round
+// tripped" claim itself, main does the encode *and* the decode and hands
+// back only what the native module actually returned.
+interface CapturedEvent {
+  kind: "keyDown" | "keyUp" | "mouseMove" | "mouseButton" | "scroll";
+  code?: number;
+  x?: number;
+  y?: number;
+  button?: number;
+  down?: boolean;
+  dx?: number;
+  dy?: number;
+}
+
+ipcMain.handle("input:roundTrip", (_event, captured: CapturedEvent): { encodedHex: string; decoded: DecodedInputEvent } => {
+  let encoded: Buffer;
+  switch (captured.kind) {
+    case "keyDown":
+      encoded = native.encodeKeyDown(captured.code ?? 0);
+      break;
+    case "keyUp":
+      encoded = native.encodeKeyUp(captured.code ?? 0);
+      break;
+    case "mouseMove":
+      encoded = native.encodeMouseMove(captured.x ?? 0, captured.y ?? 0);
+      break;
+    case "mouseButton":
+      encoded = native.encodeMouseButton(captured.button ?? 0, captured.down ?? false);
+      break;
+    case "scroll":
+      encoded = native.encodeScroll(captured.dx ?? 0, captured.dy ?? 0);
+      break;
+  }
+  return { encodedHex: encoded.toString("hex"), decoded: native.decodeInputEvent(encoded) };
 });
 
 app.whenReady().then(createWindow);

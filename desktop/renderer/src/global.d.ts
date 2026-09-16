@@ -31,6 +31,33 @@ interface RequestSessionResult {
   message: string;
 }
 
+interface CapturedEvent {
+  kind: "keyDown" | "keyUp" | "mouseMove" | "mouseButton" | "scroll";
+  code?: number;
+  x?: number;
+  y?: number;
+  button?: number;
+  down?: boolean;
+  dx?: number;
+  dy?: number;
+}
+
+interface DecodedInputEvent {
+  kind: string;
+  code?: number;
+  x?: number;
+  y?: number;
+  button?: number;
+  down?: boolean;
+  dx?: number;
+  dy?: number;
+}
+
+interface InputRoundTripResult {
+  encodedHex: string;
+  decoded: DecodedInputEvent;
+}
+
 declare global {
   interface Window {
     nexdesk: {
@@ -44,6 +71,9 @@ declare global {
         getIdentity(): Promise<DeviceIdentity>;
         register(accessToken: string): Promise<RegisterDeviceResult>;
         requestSession(accessToken: string, targetDeviceId: string): Promise<RequestSessionResult>;
+      };
+      input: {
+        roundTrip(event: CapturedEvent): Promise<InputRoundTripResult>;
       };
     };
   }
