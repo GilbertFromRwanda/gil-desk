@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc"
 
 	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
+	"github.com/nexdesk/nexdesk/backend/internal/api"
+	"github.com/nexdesk/nexdesk/backend/internal/auth"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
 )
@@ -26,6 +28,8 @@ import (
 const (
 	presenceTTL     = 30 * time.Second
 	sessionTokenTTL = 60 * time.Second
+	accessTokenTTL  = 15 * time.Minute
+	refreshTokenTTL = 30 * 24 * time.Hour
 )
 
 func main() {
@@ -54,16 +58,26 @@ func main() {
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
 	defer redisClient.Close()
 
-	signingKey, err := sessionSigningKey()
+	sessionSigningKey, err := signingKey("NEXDESK_SESSION_SIGNING_KEY")
 	if err != nil {
 		slog.Error("session signing key", "error", err)
+		os.Exit(1)
+	}
+	jwtSigningKey, err := signingKey("NEXDESK_JWT_SIGNING_KEY")
+	if err != nil {
+		slog.Error("jwt signing key", "error", err)
 		os.Exit(1)
 	}
 
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, presenceTTL)
-	tokens := rendezvous.NewTokenIssuer(signingKey, sessionTokenTTL)
-	rendezvousService := rendezvous.NewService(store, presence, tokens)
+	sessionTokens := rendezvous.NewTokenIssuer(sessionSigningKey, sessionTokenTTL)
+	rendezvousService := rendezvous.NewService(store, presence, sessionTokens)
+
+	accounts := auth.NewAccountStore(pool)
+	accessTokens := auth.NewTokenIssuer(jwtSigningKey, accessTokenTTL)
+	refreshTokens := auth.NewRefreshStore(pool, refreshTokenTTL)
+	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens)
 
 	grpcServer := grpc.NewServer()
 	nexdeskv1.RegisterRendezvousServiceServer(grpcServer, rendezvousService)
@@ -83,6 +97,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
 	mux.HandleFunc("/readyz", readyzHandler(pool, redisClient))
+	mux.HandleFunc("POST /auth/register", authHandlers.Register)
+	mux.HandleFunc("POST /auth/login", authHandlers.Login)
+	mux.HandleFunc("POST /auth/refresh", authHandlers.Refresh)
 	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
 
 	go func() {
@@ -141,19 +158,20 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-// sessionSigningKey reads NEXDESK_SESSION_SIGNING_KEY, or generates a
-// random one if unset. A generated key is ephemeral — it changes on every
-// restart, invalidating any outstanding session tokens — which is fine
-// given the short (60s) TTL, but a production deployment should set this
-// explicitly so a rolling restart doesn't strand in-flight authorizations.
-func sessionSigningKey() ([]byte, error) {
-	if v := os.Getenv("NEXDESK_SESSION_SIGNING_KEY"); v != "" {
+// signingKey reads envVar, or generates a random key if unset. A generated
+// key is ephemeral — it changes on every restart, invalidating any
+// outstanding tokens signed with it — which is fine for the short-lived
+// session-authorization token (60s TTL), but a production deployment
+// should set NEXDESK_JWT_SIGNING_KEY explicitly: a generated one would
+// invalidate every user's session on every restart.
+func signingKey(envVar string) ([]byte, error) {
+	if v := os.Getenv(envVar); v != "" {
 		return []byte(v), nil
 	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	slog.Warn("NEXDESK_SESSION_SIGNING_KEY not set; generated an ephemeral key for this process only")
+	slog.Warn(envVar+" not set; generated an ephemeral key for this process only", "env_var", envVar)
 	return key, nil
 }
