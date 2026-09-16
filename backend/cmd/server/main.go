@@ -26,10 +26,12 @@ import (
 )
 
 const (
-	presenceTTL     = 30 * time.Second
-	sessionTokenTTL = 60 * time.Second
-	accessTokenTTL  = 15 * time.Minute
-	refreshTokenTTL = 30 * 24 * time.Hour
+	presenceTTL            = 30 * time.Second
+	sessionTokenTTL        = 60 * time.Second
+	accessTokenTTL         = 15 * time.Minute
+	refreshTokenTTL        = 30 * 24 * time.Hour
+	loginRateLimitAttempts = 5
+	loginRateLimitWindow   = 15 * time.Minute
 )
 
 func main() {
@@ -72,7 +74,8 @@ func main() {
 	accounts := auth.NewAccountStore(pool)
 	accessTokens := auth.NewTokenIssuer(jwtSigningKey, accessTokenTTL)
 	refreshTokens := auth.NewRefreshStore(pool, refreshTokenTTL)
-	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens)
+	loginLimits := auth.NewRateLimiter(redisClient, loginRateLimitAttempts, loginRateLimitWindow)
+	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens, loginLimits)
 
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, presenceTTL)

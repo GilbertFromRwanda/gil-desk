@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
@@ -127,6 +129,86 @@ func TestAccountsAndRefreshTokensAgainstRealPostgres(t *testing.T) {
 	t.Run("unknown refresh token is rejected", func(t *testing.T) {
 		if _, _, err := refresh.Rotate(ctx, "not-a-real-token"); !errors.Is(err, auth.ErrInvalidRefreshToken) {
 			t.Fatalf("expected ErrInvalidRefreshToken, got %v", err)
+		}
+	})
+}
+
+// Real Redis via testcontainers, not mocks.
+func TestRateLimiterAgainstRealRedis(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping testcontainers-based integration test in -short mode")
+	}
+	ctx := context.Background()
+
+	redisContainer, err := tcredis.Run(ctx, "redis:7-alpine")
+	if err != nil {
+		t.Fatalf("start redis container: %v", err)
+	}
+	t.Cleanup(func() { _ = redisContainer.Terminate(ctx) })
+
+	redisURI, err := redisContainer.ConnectionString(ctx)
+	if err != nil {
+		t.Fatalf("redis connection string: %v", err)
+	}
+	redisOpts, err := redis.ParseURL(redisURI)
+	if err != nil {
+		t.Fatalf("parse redis URI: %v", err)
+	}
+	redisClient := redis.NewClient(redisOpts)
+	t.Cleanup(func() { _ = redisClient.Close() })
+
+	t.Run("allows up to the limit then blocks", func(t *testing.T) {
+		limiter := auth.NewRateLimiter(redisClient, 3, time.Minute)
+		for i := 0; i < 3; i++ {
+			allowed, err := limiter.Allow(ctx, "user-x@example.com")
+			if err != nil {
+				t.Fatalf("Allow (attempt %d): %v", i+1, err)
+			}
+			if !allowed {
+				t.Fatalf("expected attempt %d to be allowed (limit is 3)", i+1)
+			}
+		}
+		allowed, err := limiter.Allow(ctx, "user-x@example.com")
+		if err != nil {
+			t.Fatalf("Allow (4th attempt): %v", err)
+		}
+		if allowed {
+			t.Fatal("expected the 4th attempt to be blocked")
+		}
+	})
+
+	t.Run("reset restores access", func(t *testing.T) {
+		limiter := auth.NewRateLimiter(redisClient, 1, time.Minute)
+		key := "user-y@example.com"
+
+		if allowed, err := limiter.Allow(ctx, key); err != nil || !allowed {
+			t.Fatalf("expected first attempt allowed, got allowed=%v err=%v", allowed, err)
+		}
+		if allowed, err := limiter.Allow(ctx, key); err != nil || allowed {
+			t.Fatalf("expected second attempt blocked, got allowed=%v err=%v", allowed, err)
+		}
+
+		if err := limiter.Reset(ctx, key); err != nil {
+			t.Fatalf("Reset: %v", err)
+		}
+
+		if allowed, err := limiter.Allow(ctx, key); err != nil || !allowed {
+			t.Fatalf("expected attempt allowed after reset, got allowed=%v err=%v", allowed, err)
+		}
+	})
+
+	t.Run("different keys are independent", func(t *testing.T) {
+		limiter := auth.NewRateLimiter(redisClient, 1, time.Minute)
+
+		if allowed, err := limiter.Allow(ctx, "user-z1@example.com"); err != nil || !allowed {
+			t.Fatalf("expected user-z1's first attempt allowed, got allowed=%v err=%v", allowed, err)
+		}
+		if allowed, err := limiter.Allow(ctx, "user-z1@example.com"); err != nil || allowed {
+			t.Fatalf("expected user-z1's second attempt blocked, got allowed=%v err=%v", allowed, err)
+		}
+		// A different key must not be affected by user-z1 being blocked.
+		if allowed, err := limiter.Allow(ctx, "user-z2@example.com"); err != nil || !allowed {
+			t.Fatalf("expected user-z2's first attempt allowed, got allowed=%v err=%v", allowed, err)
 		}
 	})
 }
