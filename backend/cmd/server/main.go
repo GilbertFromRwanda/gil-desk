@@ -69,15 +69,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	store := registry.NewStore(pool)
-	presence := registry.NewPresence(redisClient, presenceTTL)
-	sessionTokens := rendezvous.NewTokenIssuer(sessionSigningKey, sessionTokenTTL)
-	rendezvousService := rendezvous.NewService(store, presence, sessionTokens)
-
 	accounts := auth.NewAccountStore(pool)
 	accessTokens := auth.NewTokenIssuer(jwtSigningKey, accessTokenTTL)
 	refreshTokens := auth.NewRefreshStore(pool, refreshTokenTTL)
 	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens)
+
+	store := registry.NewStore(pool)
+	presence := registry.NewPresence(redisClient, presenceTTL)
+	sessionTokens := rendezvous.NewTokenIssuer(sessionSigningKey, sessionTokenTTL)
+	rendezvousService := rendezvous.NewService(store, presence, sessionTokens, accessTokens)
 
 	grpcServer := grpc.NewServer()
 	nexdeskv1.RegisterRendezvousServiceServer(grpcServer, rendezvousService)
