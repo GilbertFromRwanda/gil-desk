@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/nexdesk/nexdesk/backend/internal/api"
 	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
+	"github.com/nexdesk/nexdesk/backend/internal/metrics"
 	"github.com/nexdesk/nexdesk/backend/internal/registry"
 	"github.com/nexdesk/nexdesk/backend/internal/relay"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
@@ -114,13 +116,14 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
 	mux.HandleFunc("/readyz", readyzHandler(pool, redisClient))
+	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
 	mux.HandleFunc("POST /auth/login", authHandlers.Login)
 	mux.HandleFunc("POST /auth/login/2fa", authHandlers.LoginTwoFactor)
 	mux.HandleFunc("POST /auth/refresh", authHandlers.Refresh)
 	mux.HandleFunc("POST /auth/2fa/enroll", authHandlers.EnrollTOTP)
 	mux.HandleFunc("POST /auth/2fa/verify", authHandlers.VerifyTOTP)
-	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
+	httpServer := &http.Server{Addr: httpAddr, Handler: metrics.Middleware(mux)}
 
 	go func() {
 		slog.Info("http listening", "addr", httpAddr)
