@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -50,7 +51,30 @@ func main() {
 	httpAddr := getenv("NEXDESK_ADDR", ":8080")
 	grpcAddr := getenv("NEXDESK_GRPC_ADDR", ":9090")
 
-	pool, err := pgxpool.New(ctx, postgresURL)
+	// pgxpool's own default (max(4, runtime.NumCPU())) is sized for
+	// general use, not this pool's actual job: every device
+	// registration a real desktop app does under real load (G-28's
+	// load test, cmd/loadtest, is what this is sized against). Worth
+	// naming what this is *not* fixing: an early load-testing run
+	// showed RegisterDevice at multi-second p50 latency and this pool
+	// size was the first suspect, but raising it alone didn't move the
+	// number at all — the real cause turned out to be the load test
+	// client resolving "localhost" (Windows tries the IPv6 ::1 result
+	// first, times out, then falls back to IPv4), fixed in cmd/loadtest
+	// itself, not here. This bump is kept anyway as a real, independent
+	// improvement over the default for genuine concurrent load — not
+	// "handle 10k connections open at once" (MaxConns bounds concurrent
+	// *queries*, not held connections; these are short-lived
+	// request/response RPCs, not long-lived sessions).
+	maxConns := getenvInt("NEXDESK_POSTGRES_MAX_CONNS", 50)
+	poolConfig, err := pgxpool.ParseConfig(postgresURL)
+	if err != nil {
+		slog.Error("parse postgres url", "error", err)
+		os.Exit(1)
+	}
+	poolConfig.MaxConns = int32(maxConns)
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		slog.Error("connect to postgres", "error", err)
 		os.Exit(1)
@@ -179,6 +203,19 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getenvInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("invalid integer env var, using default", "env_var", key, "value", v, "default", fallback)
+		return fallback
+	}
+	return n
 }
 
 // signingKey reads envVar, or generates a random key if unset. A generated
