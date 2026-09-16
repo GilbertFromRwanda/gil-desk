@@ -176,3 +176,55 @@ func TestRelayDoesNotCrossWireDifferentTokenPairs(t *testing.T) {
 		// expected: c is still blocked waiting for its own pair (device-d)
 	}
 }
+
+// TestRelayDoesNotPairAcrossInstances documents a real, deliberately
+// unfixed limitation found running the planner's G-30 horizontal
+// scaling test against two real backend processes sharing the same
+// Postgres/Redis and signing keys: everything backed by shared storage
+// (accounts, JWTs, device registry, AuthorizeDevice's ACL, presence)
+// correctly worked across instances — only relay pairing didn't, because
+// Service.waiting is an in-memory, per-process map. Two peers whose
+// relay connections happen to land on different replicas behind a load
+// balancer would each wait forever, never knowing the other exists.
+//
+// This is captured here as a permanent regression-relevant test (two
+// separate Service instances sharing only a token issuer, standing in
+// for two real processes sharing only Postgres/Redis) so the boundary
+// stays *known and tested*, not just discovered once and forgotten.
+// Fixing it for real needs either infrastructure-level sticky routing
+// (keyed on the session token, which today is inside the first stream
+// frame rather than gRPC metadata a load balancer could actually see —
+// itself a real prerequisite fix) or a shared coordination layer (e.g.
+// Redis pub/sub relaying frames between instances) — real, separate
+// design work the planner already scopes as G-31 ("multi-region
+// design"), not implemented here.
+func TestRelayDoesNotPairAcrossInstances(t *testing.T) {
+	tokens := rendezvous.NewTokenIssuer([]byte("test-signing-key"), time.Minute)
+	token, _ := tokens.Issue("device-requester", "device-target")
+
+	instanceA := newTestServer(t, tokens)
+	instanceB := newTestServer(t, tokens)
+
+	onA := openStream(t, instanceA, token)
+	onB := openStream(t, instanceB, token)
+
+	if err := onA.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_Data{Data: []byte("hello from instance A")}}); err != nil {
+		t.Fatalf("onA.Send: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		_, _ = onB.Recv()
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("onB.Recv returned — if this starts passing, relay pairing has become cross-instance-aware; " +
+			"update this test's docs (and TestRelayDoesNotPairAcrossInstances's name) to match, don't just delete it")
+	case <-ctx.Done():
+		// expected today: onB never sees onA's frame, because they're on
+		// two Service instances with independent in-memory waiting maps
+	}
+}
