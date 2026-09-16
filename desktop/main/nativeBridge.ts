@@ -19,6 +19,16 @@ interface DecodedInputEvent {
   dy?: number;
 }
 
+// A live session with a real peer, connected through the relay
+// (nexdesk-core's rendezvous::relay, Gate G3). One JS object per
+// connected session, backed by a real Rust RelayConnection held alive by
+// the native addon for as long as this object is referenced.
+export interface RelaySession {
+  readonly peerDeviceId: string;
+  send(data: Buffer): Promise<void>;
+  recv(): Promise<Buffer>;
+}
+
 interface NativeAddon {
   nativeVersion(): string;
   initialSessionState(): string;
@@ -28,6 +38,7 @@ interface NativeAddon {
   encodeMouseButton(button: number, down: boolean): Buffer;
   encodeScroll(dx: number, dy: number): Buffer;
   decodeInputEvent(bytes: Buffer): DecodedInputEvent;
+  connectRelaySession(relayAddr: string, sessionToken: string, deviceId: string): Promise<RelaySession>;
 }
 
 const native: NativeAddon = require(path.join(__dirname, "../../native/index.node"));

@@ -7,9 +7,13 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2", default-features = false, features = ["napi4"] }
+# tokio_rt: napi-rs's own internal tokio runtime, needed for #[napi] async
+# fn/methods (RelaySession's send/recv, connect_relay_session) — without
+# it, async napi functions fail to compile (no executor to run them on).
+napi = { version = "2", default-features = false, features = ["napi4", "tokio_rt"] }
 napi-derive = "2"
 nexdesk-core = { path = "../../core/nexdesk-core" }
+tokio = { version = "1", features = ["sync"] }
 
 [build-dependencies]
 napi-build = "2"

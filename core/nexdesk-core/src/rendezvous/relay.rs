@@ -13,6 +13,7 @@
 //! a single bidi-streaming method.
 
 use crate::error::{NexError, Result};
+use crate::protocol::{self, SessionHello};
 use crate::transport::Connection;
 use http::uri::PathAndQuery;
 use nexdesk_proto::nexdesk::v1::{relay_frame::Payload, RelayFrame};
@@ -115,4 +116,34 @@ pub async fn connect(relay_addr: &str, session_token: &str) -> Result<RelayConne
         outbound: tx,
         inbound: response.into_inner(),
     })
+}
+
+/// `connect` plus the `SessionHello` exchange (planner R-19's wire
+/// message) both `bin/host.rs` and `bin/client.rs` already do by hand —
+/// pulled out here so `desktop/native`'s napi addon can establish a real
+/// session without duplicating that exchange logic. Sends this side's
+/// hello *before* waiting on the peer's: safe for any full-duplex
+/// channel, and required here specifically — see `connect`'s own docs
+/// on the deadlock that was hit and fixed when this crate first tried
+/// assuming the other order was safe over a relay.
+///
+/// Returns the connection and the peer's `device_id`; the caller (the
+/// CLI binaries' own heartbeat loop, or whatever the native addon's
+/// caller in Electron wants to do) owns everything after the handshake.
+pub async fn connect_and_handshake(
+    relay_addr: &str,
+    session_token: &str,
+    my_device_id: &str,
+) -> Result<(RelayConnection, String)> {
+    let mut conn = connect(relay_addr, session_token).await?;
+
+    let hello = SessionHello {
+        protocol_version: 1,
+        device_id: my_device_id.to_string(),
+    };
+    conn.send(&protocol::codec::encode(&hello)).await?;
+    let their_hello_bytes = conn.recv().await?;
+    let their_hello: SessionHello = protocol::codec::decode(&their_hello_bytes)?;
+
+    Ok((conn, their_hello.device_id))
 }

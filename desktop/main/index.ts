@@ -5,10 +5,16 @@ import * as authClient from "./authClient";
 import * as rendezvousClient from "./rendezvousClient";
 import { loadOrCreateDeviceIdentity } from "./deviceIdentity";
 import native from "./nativeBridge";
-import type { DecodedInputEvent } from "./nativeBridge";
+import type { DecodedInputEvent, RelaySession } from "./nativeBridge";
+import { randomUUID } from "node:crypto";
 
 const backendConfig = { baseUrl: process.env.NEXDESK_BACKEND_URL ?? "http://localhost:8080" };
 const grpcAddr = process.env.NEXDESK_GRPC_ADDR ?? "localhost:9090";
+// The relay (backend/internal/relay) runs on the same grpc.Server as
+// rendezvous — same host:port as grpcAddr above, just needs a URI scheme
+// for tonic::transport::Channel (rendezvousClient's @grpc/grpc-js side
+// doesn't need one).
+const relayAddr = process.env.NEXDESK_RELAY_ADDR ?? `http://${grpcAddr}`;
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -94,6 +100,33 @@ ipcMain.handle("input:roundTrip", (_event, captured: CapturedEvent): { encodedHe
       break;
   }
   return { encodedHex: encoded.toString("hex"), decoded: native.decodeInputEvent(encoded) };
+});
+
+// A RelaySession is a live native object (holds a real Rust connection)
+// — it can't cross IPC to the renderer directly, so main keeps it here
+// keyed by an opaque id and the renderer only ever holds that id, the
+// same pattern deviceIdentity.ts's cache uses for a different reason.
+const relaySessions = new Map<string, RelaySession>();
+
+ipcMain.handle("relay:connect", async (_event, sessionToken: string) => {
+  const identity = loadOrCreateDeviceIdentity();
+  const session = await native.connectRelaySession(relayAddr, sessionToken, identity.deviceId);
+  const sessionId = randomUUID();
+  relaySessions.set(sessionId, session);
+  return { sessionId, peerDeviceId: session.peerDeviceId };
+});
+
+ipcMain.handle("relay:send", async (_event, sessionId: string, text: string) => {
+  const session = relaySessions.get(sessionId);
+  if (!session) throw new Error("unknown relay session");
+  await session.send(Buffer.from(text, "utf8"));
+});
+
+ipcMain.handle("relay:recv", async (_event, sessionId: string) => {
+  const session = relaySessions.get(sessionId);
+  if (!session) throw new Error("unknown relay session");
+  const bytes = await session.recv();
+  return bytes.toString("utf8");
 });
 
 app.whenReady().then(createWindow);

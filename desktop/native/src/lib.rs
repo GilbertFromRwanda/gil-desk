@@ -12,7 +12,11 @@ extern crate napi_derive;
 
 use napi::bindgen_prelude::Buffer;
 use nexdesk_core::input::InputEvent;
+use nexdesk_core::rendezvous::relay::{self, RelayConnection};
 use nexdesk_core::session::SessionState;
+use nexdesk_core::transport::Connection;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[napi]
 pub fn native_version() -> String {
@@ -126,5 +130,73 @@ pub fn decode_input_event(bytes: Buffer) -> napi::Result<DecodedInputEvent> {
             dx: Some(dx),
             dy: Some(dy),
         },
+    })
+}
+
+fn to_napi_err(e: nexdesk_core::error::NexError) -> napi::Error {
+    napi::Error::from_reason(e.to_string())
+}
+
+/// A live session with a real peer, connected through the relay
+/// (`rendezvous::relay`, Gate G3). This is the first time the Electron
+/// app can reach an actual `nexdesk-core` session rather than only the
+/// Go control plane (auth, device registry, `RequestSession`) — the
+/// desktop UI's own gRPC calls (`main/rendezvousClient.ts`) get a
+/// session token; this class is what turns that token into bytes
+/// actually flowing to and from a peer, via the exact same
+/// `core::input::InputEvent`-producing code path `encodeKeyDown` etc.
+/// above feed into (that wiring — pushing captured input through an open
+/// `RelaySession` instead of only round-tripping it locally — is real,
+/// separate future work; this class only proves the transport side).
+///
+/// `RelayConnection` is wrapped in `Arc<Mutex<_>>` rather than accessed
+/// via `&mut self` directly: napi-rs class instances can have more than
+/// one JS-side call in flight (e.g. a `send` and a `recv` awaited
+/// concurrently from TypeScript), and `Connection::send`/`recv` need
+/// exclusive access to the underlying stream for the duration of each
+/// call.
+#[napi]
+pub struct RelaySession {
+    conn: Arc<Mutex<RelayConnection>>,
+    peer_device_id: String,
+}
+
+#[napi]
+impl RelaySession {
+    #[napi(getter)]
+    pub fn peer_device_id(&self) -> String {
+        self.peer_device_id.clone()
+    }
+
+    #[napi]
+    pub async fn send(&self, data: Buffer) -> napi::Result<()> {
+        self.conn.lock().await.send(&data).await.map_err(to_napi_err)
+    }
+
+    #[napi]
+    pub async fn recv(&self) -> napi::Result<Buffer> {
+        let bytes = self.conn.lock().await.recv().await.map_err(to_napi_err)?;
+        Ok(bytes.into())
+    }
+}
+
+/// Connects through the relay and completes the `SessionHello` handshake
+/// (`rendezvous::relay::connect_and_handshake` — the same function
+/// `bin/host.rs`/`bin/client.rs`'s relay mode would otherwise have had to
+/// be duplicated to get here). Resolves once the peer's hello is
+/// received; the JS `Promise` this returns is exactly as long-blocking as
+/// the underlying handshake and no longer.
+#[napi]
+pub async fn connect_relay_session(
+    relay_addr: String,
+    session_token: String,
+    device_id: String,
+) -> napi::Result<RelaySession> {
+    let (conn, peer_device_id) = relay::connect_and_handshake(&relay_addr, &session_token, &device_id)
+        .await
+        .map_err(to_napi_err)?;
+    Ok(RelaySession {
+        conn: Arc::new(Mutex::new(conn)),
+        peer_device_id,
     })
 }
