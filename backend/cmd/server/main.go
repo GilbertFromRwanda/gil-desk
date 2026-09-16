@@ -33,6 +33,7 @@ const (
 	refreshTokenTTL        = 30 * 24 * time.Hour
 	loginRateLimitAttempts = 5
 	loginRateLimitWindow   = 15 * time.Minute
+	pendingLoginTTL        = 5 * time.Minute
 )
 
 func main() {
@@ -71,6 +72,11 @@ func main() {
 		slog.Error("jwt signing key", "error", err)
 		os.Exit(1)
 	}
+	pendingLoginSigningKey, err := signingKey("NEXDESK_PENDING_LOGIN_SIGNING_KEY")
+	if err != nil {
+		slog.Error("pending login signing key", "error", err)
+		os.Exit(1)
+	}
 
 	auditLogger := audit.NewLogger(pool)
 
@@ -78,7 +84,8 @@ func main() {
 	accessTokens := auth.NewTokenIssuer(jwtSigningKey, accessTokenTTL)
 	refreshTokens := auth.NewRefreshStore(pool, refreshTokenTTL)
 	loginLimits := auth.NewRateLimiter(redisClient, loginRateLimitAttempts, loginRateLimitWindow)
-	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens, loginLimits, auditLogger)
+	pendingLogins := auth.NewPendingLoginIssuer(pendingLoginSigningKey, pendingLoginTTL)
+	authHandlers := api.NewAuthHandlers(accounts, accessTokens, refreshTokens, loginLimits, pendingLogins, auditLogger)
 
 	store := registry.NewStore(pool)
 	presence := registry.NewPresence(redisClient, presenceTTL)
@@ -105,7 +112,10 @@ func main() {
 	mux.HandleFunc("/readyz", readyzHandler(pool, redisClient))
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
 	mux.HandleFunc("POST /auth/login", authHandlers.Login)
+	mux.HandleFunc("POST /auth/login/2fa", authHandlers.LoginTwoFactor)
 	mux.HandleFunc("POST /auth/refresh", authHandlers.Refresh)
+	mux.HandleFunc("POST /auth/2fa/enroll", authHandlers.EnrollTOTP)
+	mux.HandleFunc("POST /auth/2fa/verify", authHandlers.VerifyTOTP)
 	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
 
 	go func() {

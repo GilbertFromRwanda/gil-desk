@@ -19,12 +19,14 @@ import (
 // caller can log an event type this package doesn't know about yet
 // without a code change here.
 const (
-	EventUserRegistered   = "user.registered"
-	EventLoginSucceeded   = "login.succeeded"
-	EventLoginFailed      = "login.failed"
-	EventLoginRateLimited = "login.rate_limited"
-	EventDeviceRegistered = "device.registered"
-	EventDeviceAuthorized = "device.authorized"
+	EventUserRegistered       = "user.registered"
+	EventLoginSucceeded       = "login.succeeded"
+	EventLoginFailed          = "login.failed"
+	EventLoginRateLimited     = "login.rate_limited"
+	EventLoginTwoFactorFailed = "login.2fa_failed"
+	EventTwoFactorEnabled     = "user.2fa_enabled"
+	EventDeviceRegistered     = "device.registered"
+	EventDeviceAuthorized     = "device.authorized"
 )
 
 type Logger struct {
