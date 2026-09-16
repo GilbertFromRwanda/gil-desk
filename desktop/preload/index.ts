@@ -60,6 +60,11 @@ interface InputRoundTripResult {
   decoded: DecodedInputEvent;
 }
 
+interface RelayConnectResult {
+  sessionId: string;
+  peerDeviceId: string;
+}
+
 contextBridge.exposeInMainWorld("nexdesk", {
   version: "0.1.0",
   auth: {
@@ -80,5 +85,12 @@ contextBridge.exposeInMainWorld("nexdesk", {
   input: {
     roundTrip: (event: CapturedEvent): Promise<InputRoundTripResult> =>
       ipcRenderer.invoke("input:roundTrip", event),
+  },
+  relay: {
+    connect: (sessionToken: string): Promise<RelayConnectResult> =>
+      ipcRenderer.invoke("relay:connect", sessionToken),
+    send: (sessionId: string, text: string): Promise<void> =>
+      ipcRenderer.invoke("relay:send", sessionId, text),
+    recv: (sessionId: string): Promise<string> => ipcRenderer.invoke("relay:recv", sessionId),
   },
 });

@@ -58,6 +58,11 @@ interface InputRoundTripResult {
   decoded: DecodedInputEvent;
 }
 
+interface RelayConnectResult {
+  sessionId: string;
+  peerDeviceId: string;
+}
+
 declare global {
   interface Window {
     nexdesk: {
@@ -74,6 +79,11 @@ declare global {
       };
       input: {
         roundTrip(event: CapturedEvent): Promise<InputRoundTripResult>;
+      };
+      relay: {
+        connect(sessionToken: string): Promise<RelayConnectResult>;
+        send(sessionId: string, text: string): Promise<void>;
+        recv(sessionId: string): Promise<string>;
       };
     };
   }

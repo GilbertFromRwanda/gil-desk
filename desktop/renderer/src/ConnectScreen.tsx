@@ -5,6 +5,7 @@
 // no-network-primitives-in-the-renderer posture as the auth screen.
 import { useEffect, useState } from "react";
 import InputCapture from "./InputCapture";
+import RelayChat from "./RelayChat";
 
 type RegisterStatus = "idle" | "checking" | "registered" | "error";
 type SessionRequestStatus = "idle" | "requesting" | "authorized" | "denied" | "error";
@@ -98,6 +99,7 @@ export default function ConnectScreen({
           </p>
         </div>
       )}
+      {sessionStatus === "authorized" && <RelayChat sessionToken={sessionToken} />}
       {sessionStatus === "denied" && <p style={{ color: "darkorange" }}>{sessionMessage}</p>}
       {sessionStatus === "error" && <p style={{ color: "crimson" }}>{sessionMessage}</p>}
 
