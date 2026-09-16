@@ -15,6 +15,7 @@ import (
 
 	"github.com/nexdesk/nexdesk/backend/internal/audit"
 	"github.com/nexdesk/nexdesk/backend/internal/auth"
+	"github.com/nexdesk/nexdesk/backend/internal/metrics"
 )
 
 const minPasswordLength = 8
@@ -146,6 +147,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !allowed {
+		metrics.LoginAttemptsTotal.WithLabelValues("rate_limited").Inc()
 		h.logAudit(r.Context(), audit.EventLoginRateLimited, "", req.Email)
 		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
 		return
@@ -153,6 +155,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.accounts.VerifyPassword(r.Context(), req.Email, req.Password)
 	if err != nil {
+		metrics.LoginAttemptsTotal.WithLabelValues("failed").Inc()
 		h.logAudit(r.Context(), audit.EventLoginFailed, "", req.Email)
 		writeError(w, http.StatusUnauthorized, "invalid email or password")
 		return
@@ -164,6 +167,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user.TOTPEnabled {
+		metrics.LoginAttemptsTotal.WithLabelValues("two_factor_required").Inc()
 		pendingToken, expiresAt := h.pendingLogins.Issue(user.ID)
 		writeJSON(w, http.StatusOK, twoFactorRequiredResponse{
 			TwoFactorRequired: true,
@@ -173,6 +177,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metrics.LoginAttemptsTotal.WithLabelValues("succeeded").Inc()
 	h.logAudit(r.Context(), audit.EventLoginSucceeded, user.ID, req.Email)
 	h.issueTokens(w, r.Context(), user.ID)
 }
@@ -197,11 +202,13 @@ func (h *AuthHandlers) LoginTwoFactor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !auth.ValidateTOTPCode(secret, req.Code) {
+		metrics.LoginAttemptsTotal.WithLabelValues("two_factor_failed").Inc()
 		h.logAudit(r.Context(), audit.EventLoginTwoFactorFailed, userID, "")
 		writeError(w, http.StatusUnauthorized, "invalid TOTP code")
 		return
 	}
 
+	metrics.LoginAttemptsTotal.WithLabelValues("succeeded").Inc()
 	h.logAudit(r.Context(), audit.EventLoginSucceeded, userID, "")
 	h.issueTokens(w, r.Context(), userID)
 }

@@ -1,0 +1,13 @@
+# Tells Grafana to auto-load every dashboard JSON file under
+# /var/lib/grafana/dashboards (mounted from infra/docker/grafana/dashboards)
+# on startup, rather than needing them clicked through the UI.
+apiVersion: 1
+
+providers:
+  - name: NexDesk
+    folder: NexDesk
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

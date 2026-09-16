@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
+	"github.com/nexdesk/nexdesk/backend/internal/metrics"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
 )
 
@@ -83,6 +84,9 @@ func (s *Service) Stream(stream nexdeskv1.RelayService_StreamServer) error {
 		// their own goroutine, unblocked below, now does).
 		peer.matched <- stream
 		slog.Info("relay paired two streams")
+		metrics.RelayPairingsTotal.Inc()
+		metrics.RelaySessionsActive.Inc()
+		defer metrics.RelaySessionsActive.Dec()
 		return pipeOneDirection(stream, peer.stream)
 	}
 
@@ -124,6 +128,7 @@ func pipeOneDirection(src, dst nexdeskv1.RelayService_StreamServer) error {
 		if frame.GetSessionToken() != "" {
 			return status.Error(codes.InvalidArgument, "session_token frame received after the first frame")
 		}
+		metrics.RelayBytesForwardedTotal.Add(float64(len(frame.GetData())))
 		if err := dst.Send(frame); err != nil {
 			return err
 		}

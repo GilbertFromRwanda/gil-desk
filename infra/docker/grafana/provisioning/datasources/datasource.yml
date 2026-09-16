@@ -1,0 +1,14 @@
+# Auto-provisions the Prometheus datasource on Grafana startup (planner
+# G-27) — mounted read-only into /etc/grafana/provisioning/datasources
+# by docker-compose.yml. "prometheus" resolves via Compose's internal
+# DNS, the same as the backend service's own NEXDESK_POSTGRES_URL/
+# REDIS_ADDR use "postgres"/"redis".
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

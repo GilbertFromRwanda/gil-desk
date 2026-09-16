@@ -15,9 +15,23 @@ services:
       context: ../../backend
     environment:
       NEXDESK_ADDR: ":8080"
+      # Compose's internal DNS resolves service names, not localhost —
+      # this service was defaulting to NEXDESK_POSTGRES_URL/REDIS_ADDR's
+      # own localhost fallbacks (meant for running the binary directly
+      # on the host) and failing to connect at all until this was set.
+      # Caught for real running the full stack end to end for the first
+      # time (previously only postgres/redis were ever brought up this
+      # way; backend was always run directly via `go run`).
+      NEXDESK_POSTGRES_URL: "postgres://nexdesk:nexdesk@postgres:5432/nexdesk"
+      NEXDESK_REDIS_ADDR: "redis:6379"
     ports:
       # Host port off 8080 — this machine's XAMPP/Tomcat already binds it.
       - "18080:8080"
+      # gRPC (RendezvousService/RelayService) — wasn't exposed at all
+      # before, so nothing outside the compose network could reach it;
+      # host port matches the convention the manual `go run` dev flow
+      # already uses elsewhere in this repo's docs/scripts.
+      - "19091:9090"
     depends_on:
       - postgres
       - redis
@@ -57,6 +71,9 @@ services:
       - "13000:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: nexdesk
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 
