@@ -2,8 +2,11 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import * as authClient from "./authClient";
+import * as rendezvousClient from "./rendezvousClient";
+import { loadOrCreateDeviceIdentity } from "./deviceIdentity";
 
 const backendConfig = { baseUrl: process.env.NEXDESK_BACKEND_URL ?? "http://localhost:8080" };
+const grpcAddr = process.env.NEXDESK_GRPC_ADDR ?? "localhost:9090";
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -36,6 +39,22 @@ ipcMain.handle("auth:login", (_event, email: string, password: string) =>
 ipcMain.handle("auth:loginTwoFactor", (_event, pendingToken: string, code: string) =>
   authClient.loginTwoFactor(backendConfig, pendingToken, code)
 );
+
+// device:getIdentity doesn't need `app` to be ready (it's called once the
+// window's renderer loads, well after whenReady), but loadOrCreateDeviceIdentity
+// itself calls app.getPath — safe here since IPC handlers only ever run
+// after a renderer exists, i.e. after createWindow, i.e. after whenReady.
+ipcMain.handle("device:getIdentity", () => loadOrCreateDeviceIdentity());
+
+ipcMain.handle("device:register", (_event, accessToken: string) => {
+  const identity = loadOrCreateDeviceIdentity();
+  return rendezvousClient.registerDevice(grpcAddr, accessToken, identity.deviceId, identity.publicKeyPem);
+});
+
+ipcMain.handle("device:requestSession", (_event, accessToken: string, targetDeviceId: string) => {
+  const identity = loadOrCreateDeviceIdentity();
+  return rendezvousClient.requestSession(grpcAddr, accessToken, identity.deviceId, targetDeviceId);
+});
 
 app.whenReady().then(createWindow);
 
