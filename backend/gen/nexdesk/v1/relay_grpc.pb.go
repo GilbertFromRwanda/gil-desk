@@ -28,14 +28,16 @@ const (
 //
 // Byte relay for when a direct peer-to-peer connection isn't possible
 // (planner Gate G3's "if direct fails -> relay" step, tasks G-20/G-21).
-// Both sides of a session dial Stream and send the *same*
-// RequestSession-issued session_token (RendezvousService, G-12) as their
-// first frame; the relay pairs the two streams by that token and forwards
-// every frame after it byte-for-byte in both directions. The token itself
-// is the only authentication a peer needs to present here — it already
-// proves the rendezvous server checked the pairing was authorized, so the
-// relay doesn't need its own database round trip (same reasoning
-// TokenIssuer's own doc comment gives for why it exists at all).
+// Both sides of a session dial Stream, presenting the *same*
+// RequestSession-issued session_token (RendezvousService, G-12) as gRPC
+// metadata (key "x-nexdesk-session-token") on the call itself, not as a
+// message — see RelayFrame's own doc comment for why that changed. The
+// relay pairs the two streams by that token and forwards every frame
+// byte-for-byte in both directions from then on. The token is the only
+// authentication a peer needs to present here — it already proves the
+// rendezvous server checked the pairing was authorized, so the relay
+// doesn't need its own database round trip (same reasoning TokenIssuer's
+// own doc comment gives for why it exists at all).
 type RelayServiceClient interface {
 	Stream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[RelayFrame, RelayFrame], error)
 }
@@ -67,14 +69,16 @@ type RelayService_StreamClient = grpc.BidiStreamingClient[RelayFrame, RelayFrame
 //
 // Byte relay for when a direct peer-to-peer connection isn't possible
 // (planner Gate G3's "if direct fails -> relay" step, tasks G-20/G-21).
-// Both sides of a session dial Stream and send the *same*
-// RequestSession-issued session_token (RendezvousService, G-12) as their
-// first frame; the relay pairs the two streams by that token and forwards
-// every frame after it byte-for-byte in both directions. The token itself
-// is the only authentication a peer needs to present here — it already
-// proves the rendezvous server checked the pairing was authorized, so the
-// relay doesn't need its own database round trip (same reasoning
-// TokenIssuer's own doc comment gives for why it exists at all).
+// Both sides of a session dial Stream, presenting the *same*
+// RequestSession-issued session_token (RendezvousService, G-12) as gRPC
+// metadata (key "x-nexdesk-session-token") on the call itself, not as a
+// message — see RelayFrame's own doc comment for why that changed. The
+// relay pairs the two streams by that token and forwards every frame
+// byte-for-byte in both directions from then on. The token is the only
+// authentication a peer needs to present here — it already proves the
+// rendezvous server checked the pairing was authorized, so the relay
+// doesn't need its own database round trip (same reasoning TokenIssuer's
+// own doc comment gives for why it exists at all).
 type RelayServiceServer interface {
 	Stream(grpc.BidiStreamingServer[RelayFrame, RelayFrame]) error
 	mustEmbedUnimplementedRelayServiceServer()

@@ -16,7 +16,7 @@ use crate::error::{NexError, Result};
 use crate::protocol::{self, SessionHello};
 use crate::transport::Connection;
 use http::uri::PathAndQuery;
-use nexdesk_proto::nexdesk::v1::{relay_frame::Payload, RelayFrame};
+use nexdesk_proto::nexdesk::v1::RelayFrame;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::codec::ProstCodec;
@@ -25,6 +25,10 @@ use tonic::Request;
 
 const RELAY_STREAM_PATH: &str = "/nexdesk.v1.RelayService/Stream";
 const OUTBOUND_BUFFER: usize = 16;
+// Mirrors backend/internal/relay/relay.go's sessionTokenMetadataKey —
+// see relay.proto's own docs on why the token moved here from being the
+// first stream message.
+const SESSION_TOKEN_METADATA_KEY: &str = "x-nexdesk-session-token";
 
 /// A `Connection` carried over the Go backend's relay rather than a
 /// direct socket. `data` frames map 1:1 to `Connection::send`/`recv`
@@ -40,9 +44,7 @@ pub struct RelayConnection {
 impl Connection for RelayConnection {
     async fn send(&mut self, data: &[u8]) -> Result<()> {
         self.outbound
-            .send(RelayFrame {
-                payload: Some(Payload::Data(data.to_vec())),
-            })
+            .send(RelayFrame { data: data.to_vec() })
             .await
             .map_err(|_| NexError::Transport("relay outbound channel closed".to_string()))
     }
@@ -54,23 +56,19 @@ impl Connection for RelayConnection {
             .await
             .map_err(|e| NexError::Transport(format!("relay recv failed: {e}")))?
             .ok_or_else(|| NexError::Transport("relay stream closed by peer".to_string()))?;
-
-        match frame.payload {
-            Some(Payload::Data(bytes)) => Ok(bytes),
-            Some(Payload::SessionToken(_)) => Err(NexError::Transport(
-                "received an unexpected session_token frame after the handshake".to_string(),
-            )),
-            None => Err(NexError::Transport("received an empty relay frame".to_string())),
-        }
+        Ok(frame.data)
     }
 }
 
 /// Connects to the relay at `relay_addr` (e.g. `http://127.0.0.1:9090`)
-/// and presents `session_token` as the required first frame — the same
-/// token both sides of a session must present to be paired together
-/// (see `relay.proto`'s own docs on why: the relay makes no authorization
-/// decision itself, the token already proves the rendezvous server made
-/// one).
+/// and presents `session_token` as gRPC metadata on the call itself —
+/// the same token both sides of a session must present to be paired
+/// together (see `relay.proto`'s own docs on why: the relay makes no
+/// authorization decision itself, the token already proves the
+/// rendezvous server made one — and on why the token lives in metadata
+/// rather than the first stream message, as it used to: a load balancer
+/// doing sticky routing needs to see it, and can see metadata but not a
+/// message payload).
 ///
 /// Returns as soon as the relay accepts *this* side's token — it does
 /// not wait for the peer to also connect (pairing happens independently,
@@ -94,11 +92,6 @@ pub async fn connect(relay_addr: &str, session_token: &str) -> Result<RelayConne
         .map_err(|e| NexError::Transport(format!("connect to relay {relay_addr}: {e}")))?;
 
     let (tx, rx) = mpsc::channel::<RelayFrame>(OUTBOUND_BUFFER);
-    tx.send(RelayFrame {
-        payload: Some(Payload::SessionToken(session_token.to_string())),
-    })
-    .await
-    .map_err(|_| NexError::Transport("relay outbound channel closed before handshake".to_string()))?;
 
     let mut client = tonic::client::Grpc::new(channel);
     client
@@ -107,8 +100,16 @@ pub async fn connect(relay_addr: &str, session_token: &str) -> Result<RelayConne
         .map_err(|e| NexError::Transport(format!("relay not ready: {e}")))?;
 
     let path = PathAndQuery::from_static(RELAY_STREAM_PATH);
+    let mut request = Request::new(ReceiverStream::new(rx));
+    let metadata_value = session_token
+        .parse()
+        .map_err(|e| NexError::Transport(format!("invalid session token for gRPC metadata: {e}")))?;
+    request
+        .metadata_mut()
+        .insert(SESSION_TOKEN_METADATA_KEY, metadata_value);
+
     let response = client
-        .streaming(Request::new(ReceiverStream::new(rx)), path, ProstCodec::default())
+        .streaming(request, path, ProstCodec::default())
         .await
         .map_err(|status| NexError::Transport(format!("relay stream rejected: {status}")))?;
 

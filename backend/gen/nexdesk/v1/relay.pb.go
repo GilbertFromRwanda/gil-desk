@@ -21,13 +21,27 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Every frame is opaque bytes forwarded verbatim to the peer — the relay
+// never inspects or interprets this payload — whatever's inside
+// (encrypted session frames, in the real end-to-end TLS-secured protocol
+// Phase 1 already built) is between the two peers, not the relay.
+//
+// This used to be a oneof with a session_token variant for the required
+// first frame; that field is gone, not just unused (protoc would refuse
+// to reuse field number 1 for something else, so it's retired for good,
+// per this repo's own protocol-versioning rule against reusing field
+// numbers). The token moved to gRPC metadata instead: a real,
+// discovered need, not a style preference — a load balancer that wants
+// to route two peers presenting the same token to the same backend
+// instance (the real fix for the cross-instance relay-pairing gap
+// backend/internal/relay/relay_test.go's TestRelayDoesNotPairAcrossInstances
+// documents) needs to see the token to route on, and no standard L7/gRPC-
+// aware proxy can see inside a message payload the way it can see
+// metadata. This alone doesn't implement that routing — it just stops
+// blocking it at the protocol level.
 type RelayFrame struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Payload:
-	//
-	//	*RelayFrame_SessionToken
-	//	*RelayFrame_Data
-	Payload       isRelayFrame_Payload `protobuf_oneof:"payload"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -62,66 +76,22 @@ func (*RelayFrame) Descriptor() ([]byte, []int) {
 	return file_nexdesk_v1_relay_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RelayFrame) GetPayload() isRelayFrame_Payload {
-	if x != nil {
-		return x.Payload
-	}
-	return nil
-}
-
-func (x *RelayFrame) GetSessionToken() string {
-	if x != nil {
-		if x, ok := x.Payload.(*RelayFrame_SessionToken); ok {
-			return x.SessionToken
-		}
-	}
-	return ""
-}
-
 func (x *RelayFrame) GetData() []byte {
 	if x != nil {
-		if x, ok := x.Payload.(*RelayFrame_Data); ok {
-			return x.Data
-		}
+		return x.Data
 	}
 	return nil
 }
-
-type isRelayFrame_Payload interface {
-	isRelayFrame_Payload()
-}
-
-type RelayFrame_SessionToken struct {
-	// First frame only, from both sides: the token to pair this stream
-	// against. Any frame after the first with session_token set (instead
-	// of data) is a protocol error.
-	SessionToken string `protobuf:"bytes,1,opt,name=session_token,json=sessionToken,proto3,oneof"`
-}
-
-type RelayFrame_Data struct {
-	// Every frame after the first: opaque bytes forwarded verbatim to
-	// the peer. The relay never inspects or interprets this payload —
-	// whatever's inside (encrypted session frames, in the real end-to-end
-	// TLS-secured protocol Phase 1 already built) is between the two
-	// peers, not the relay.
-	Data []byte `protobuf:"bytes,2,opt,name=data,proto3,oneof"`
-}
-
-func (*RelayFrame_SessionToken) isRelayFrame_Payload() {}
-
-func (*RelayFrame_Data) isRelayFrame_Payload() {}
 
 var File_nexdesk_v1_relay_proto protoreflect.FileDescriptor
 
 const file_nexdesk_v1_relay_proto_rawDesc = "" +
 	"\n" +
 	"\x16nexdesk/v1/relay.proto\x12\n" +
-	"nexdesk.v1\"T\n" +
+	"nexdesk.v1\" \n" +
 	"\n" +
-	"RelayFrame\x12%\n" +
-	"\rsession_token\x18\x01 \x01(\tH\x00R\fsessionToken\x12\x14\n" +
-	"\x04data\x18\x02 \x01(\fH\x00R\x04dataB\t\n" +
-	"\apayload2L\n" +
+	"RelayFrame\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data2L\n" +
 	"\fRelayService\x12<\n" +
 	"\x06Stream\x12\x16.nexdesk.v1.RelayFrame\x1a\x16.nexdesk.v1.RelayFrame(\x010\x01B=Z;github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1b\x06proto3"
 
@@ -155,10 +125,6 @@ func init() { file_nexdesk_v1_relay_proto_init() }
 func file_nexdesk_v1_relay_proto_init() {
 	if File_nexdesk_v1_relay_proto != nil {
 		return
-	}
-	file_nexdesk_v1_relay_proto_msgTypes[0].OneofWrappers = []any{
-		(*RelayFrame_SessionToken)(nil),
-		(*RelayFrame_Data)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
