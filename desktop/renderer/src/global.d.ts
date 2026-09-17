@@ -74,8 +74,8 @@ declare global {
       };
       device: {
         getIdentity(): Promise<DeviceIdentity>;
-        register(accessToken: string): Promise<RegisterDeviceResult>;
-        requestSession(accessToken: string, targetDeviceId: string): Promise<RequestSessionResult>;
+        register(): Promise<RegisterDeviceResult>;
+        requestSession(targetDeviceId: string): Promise<RequestSessionResult>;
       };
       input: {
         roundTrip(event: CapturedEvent): Promise<InputRoundTripResult>;
