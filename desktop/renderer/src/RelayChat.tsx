@@ -87,19 +87,22 @@ export default function RelayChat({ sessionToken }: { sessionToken: string }) {
   }
 
   return (
-    <div>
-      <h2>Live session (Gate G3)</h2>
-      {status === "idle" && <button onClick={handleConnect}>Connect through relay</button>}
-      {status === "connecting" && <p>connecting...</p>}
-      {status === "error" && <p style={{ color: "crimson" }}>{errorMessage}</p>}
+    <div className="card">
+      <p className="card-title">Live session</p>
+      {status === "idle" && <button className="btn-primary" style={{ width: "auto" }} onClick={handleConnect}>Connect through relay</button>}
+      {status === "connecting" && <p className="text-muted">Connecting...</p>}
+      {status === "error" && <div className="alert alert-danger">{errorMessage}</div>}
       {status === "connected" && (
         <div>
-          <p style={{ color: "green" }}>Connected to peer <strong>{peerDeviceId}</strong>.</p>
-          <form onSubmit={handleSend}>
-            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="message" />
-            <button type="submit">Send</button>
+          <p>
+            <span className="status-dot online" />
+            Connected to peer <strong>{peerDeviceId}</strong>
+          </p>
+          <form onSubmit={handleSend} className="row">
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Type a message" />
+            <button type="submit" className="btn-secondary" style={{ width: "auto" }}>Send</button>
           </form>
-          <ul style={{ fontFamily: "monospace", fontSize: 12, listStyle: "none", padding: 0 }}>
+          <ul className="log-list">
             {log.map((entry) => (
               <li key={entry.id}>
                 {entry.direction === "sent" ? "-> " : "<- "}
