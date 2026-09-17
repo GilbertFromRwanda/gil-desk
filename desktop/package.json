@@ -11,7 +11,25 @@
     "build:preload": "tsc -p tsconfig.preload.json",
     "build": "npm run build:renderer && npm run build:main && npm run build:preload",
     "start": "electron dist/main/index.js",
+    "package:win": "npm run build && electron-builder --win portable",
     "test": "echo \"no tests yet\" && exit 0"
+  },
+  "author": "NexDesk",
+  "build": {
+    "appId": "com.nexdesk.desktop",
+    "productName": "NexDesk",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "native/index.node",
+      "package.json"
+    ],
+    "asar": false,
+    "win": {
+      "target": "portable"
+    }
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
