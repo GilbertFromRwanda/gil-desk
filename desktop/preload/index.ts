@@ -5,10 +5,6 @@
 // least-privilege posture as contextIsolation/nodeIntegration above it.
 import { contextBridge, ipcRenderer } from "electron";
 
-// Mirrors main/authClient.ts's AuthResult. Duplicated rather than
-// imported: preload and main compile as separate TS projects (different
-// rootDir/outDir), and this shape is small enough that keeping the two in
-// sync by eye is simpler than wiring a shared project reference for it.
 interface AuthResult {
   ok: boolean;
   status: number;
@@ -77,10 +73,9 @@ contextBridge.exposeInMainWorld("nexdesk", {
   },
   device: {
     getIdentity: (): Promise<DeviceIdentity> => ipcRenderer.invoke("device:getIdentity"),
-    register: (accessToken: string): Promise<RegisterDeviceResult> =>
-      ipcRenderer.invoke("device:register", accessToken),
-    requestSession: (accessToken: string, targetDeviceId: string): Promise<RequestSessionResult> =>
-      ipcRenderer.invoke("device:requestSession", accessToken, targetDeviceId),
+    register: (): Promise<RegisterDeviceResult> => ipcRenderer.invoke("device:register"),
+    requestSession: (targetDeviceId: string): Promise<RequestSessionResult> =>
+      ipcRenderer.invoke("device:requestSession", targetDeviceId),
   },
   input: {
     roundTrip: (event: CapturedEvent): Promise<InputRoundTripResult> =>

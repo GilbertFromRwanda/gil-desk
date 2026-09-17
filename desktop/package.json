@@ -5,12 +5,12 @@
   "description": "NexDesk Electron desktop client (planner Section 8).",
   "main": "dist/main/index.js",
   "scripts": {
-    "dev:renderer": "vite",
-    "build:renderer": "vite build",
-    "build:main": "tsc -p tsconfig.main.json",
-    "build:preload": "tsc -p tsconfig.preload.json",
-    "build": "npm run build:renderer && npm run build:main && npm run build:preload",
-    "start": "electron dist/main/index.js",
+    "dev:renderer": "node init && vite",
+    "build:renderer": "node init && vite build",
+    "build:main": "node init && tsc -p tsconfig.main.json",
+    "build:preload": "node init && tsc -p tsconfig.preload.json",
+    "build": "node init && npm run build:renderer && npm run build:main && npm run build:preload",
+    "start": "node init && electron dist/main/index.js",
     "package:win": "npm run build && electron-builder --win portable",
     "test": "echo \"no tests yet\" && exit 0"
   },

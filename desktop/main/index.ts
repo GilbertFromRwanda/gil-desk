@@ -1,12 +1,18 @@
 // Electron main process entrypoint (planner tasks E-01..E-05).
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import path from "node:path";
 import * as authClient from "./authClient";
 import * as rendezvousClient from "./rendezvousClient";
 import { loadOrCreateDeviceIdentity } from "./deviceIdentity";
+import { bootstrapAccessToken } from "./accountIdentity";
 import native from "./nativeBridge";
 import type { DecodedInputEvent, RelaySession } from "./nativeBridge";
 import { randomUUID } from "node:crypto";
+
+// No menu bar — this app has no File/Edit/View functionality a native
+// menu would meaningfully expose, and it was only ever there because
+// BrowserWindow creates one by default, not by design.
+Menu.setApplicationMenu(null);
 
 const backendConfig = { baseUrl: process.env.NEXDESK_BACKEND_URL ?? "http://localhost:8080" };
 const grpcAddr = process.env.NEXDESK_GRPC_ADDR ?? "localhost:9090";
@@ -32,12 +38,14 @@ function createWindow(): void {
   );
 }
 
-// Every handler below just forwards to authClient and returns its result
-// verbatim — the renderer (via preload's contextBridge, see
-// preload/index.ts) gets the same {ok, status, body} shape the backend
-// actually returned, so error messages the Go server wrote (e.g. "invalid
-// email or password") reach the UI unchanged instead of being redecided
-// here.
+// On-demand account login/register (planner E-06) — separate from the
+// automatic per-device account accountIdentity.ts bootstraps for
+// RegisterDevice/RequestSession, which needs no user interaction at all.
+// This is for a person who explicitly wants to log into (or create) a
+// real account of their own, e.g. for a future paid tier — reachable
+// only via ConnectScreen's "Log in" button, never required to use the
+// app. Handlers just forward to authClient and return its result
+// verbatim, same as before this was on-demand rather than the only path.
 ipcMain.handle("auth:register", (_event, email: string, password: string) =>
   authClient.register(backendConfig, email, password)
 );
@@ -54,13 +62,19 @@ ipcMain.handle("auth:loginTwoFactor", (_event, pendingToken: string, code: strin
 // after a renderer exists, i.e. after createWindow, i.e. after whenReady.
 ipcMain.handle("device:getIdentity", () => loadOrCreateDeviceIdentity());
 
-ipcMain.handle("device:register", (_event, accessToken: string) => {
+// The renderer never sees an access token at all now — there's no login
+// screen for it to come from a form submission anymore, so main fetches
+// one (bootstrapAccessToken caches it in memory) whenever a call
+// actually needs it, rather than the renderer holding and passing one.
+ipcMain.handle("device:register", async () => {
   const identity = loadOrCreateDeviceIdentity();
+  const accessToken = await bootstrapAccessToken(backendConfig);
   return rendezvousClient.registerDevice(grpcAddr, accessToken, identity.deviceId, identity.publicKeyPem);
 });
 
-ipcMain.handle("device:requestSession", (_event, accessToken: string, targetDeviceId: string) => {
+ipcMain.handle("device:requestSession", async (_event, targetDeviceId: string) => {
   const identity = loadOrCreateDeviceIdentity();
+  const accessToken = await bootstrapAccessToken(backendConfig);
   return rendezvousClient.requestSession(grpcAddr, accessToken, identity.deviceId, targetDeviceId);
 });
 
