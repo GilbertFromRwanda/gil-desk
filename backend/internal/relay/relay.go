@@ -13,12 +13,21 @@ import (
 	"sync"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	nexdeskv1 "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1"
 	"github.com/nexdesk/nexdesk/backend/internal/metrics"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
 )
+
+// sessionTokenMetadataKey carries the pairing token as gRPC metadata on
+// the call itself, not as a stream message — see relay.proto's own docs
+// on why that changed (in short: a load balancer that wants to route two
+// peers presenting the same token to the same backend instance needs to
+// see the token, and no standard L7/gRPC-aware proxy can see inside a
+// message payload the way it can see metadata).
+const sessionTokenMetadataKey = "x-nexdesk-session-token"
 
 // TokenVerifier is the subset of rendezvous.TokenIssuer this package
 // needs — a named interface (rather than depending on *rendezvous.TokenIssuer
@@ -45,18 +54,18 @@ func NewService(tokens TokenVerifier) *Service {
 }
 
 // Stream pairs this call with whichever other call (if any) presents the
-// same session token, then forwards frames between them until either
-// side disconnects. The first frame from each side must carry the token;
-// every frame after that is treated as opaque data to forward.
+// same session token (as gRPC metadata, see sessionTokenMetadataKey),
+// then forwards frames between them until either side disconnects.
 func (s *Service) Stream(stream nexdeskv1.RelayService_StreamServer) error {
-	first, err := stream.Recv()
-	if err != nil {
-		return err
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok {
+		return status.Errorf(codes.InvalidArgument, "missing %s metadata", sessionTokenMetadataKey)
 	}
-	token := first.GetSessionToken()
-	if token == "" {
-		return status.Error(codes.InvalidArgument, "first frame must carry a session_token")
+	values := md.Get(sessionTokenMetadataKey)
+	if len(values) == 0 || values[0] == "" {
+		return status.Errorf(codes.InvalidArgument, "missing %s metadata", sessionTokenMetadataKey)
 	}
+	token := values[0]
 	if _, err := s.tokens.Verify(token); err != nil {
 		return status.Error(codes.Unauthenticated, "invalid or expired session token")
 	}
@@ -124,9 +133,6 @@ func pipeOneDirection(src, dst nexdeskv1.RelayService_StreamServer) error {
 				return nil
 			}
 			return err
-		}
-		if frame.GetSessionToken() != "" {
-			return status.Error(codes.InvalidArgument, "session_token frame received after the first frame")
 		}
 		metrics.RelayBytesForwardedTotal.Add(float64(len(frame.GetData())))
 		if err := dst.Send(frame); err != nil {

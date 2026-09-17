@@ -93,27 +93,27 @@ pub struct RequestSessionResponse {
     #[prost(uint32, tag="3")]
     pub expires_in_seconds: u32,
 }
+/// Every frame is opaque bytes forwarded verbatim to the peer — the relay
+/// never inspects or interprets this payload — whatever's inside
+/// (encrypted session frames, in the real end-to-end TLS-secured protocol
+/// Phase 1 already built) is between the two peers, not the relay.
+///
+/// This used to be a oneof with a session_token variant for the required
+/// first frame; that field is gone, not just unused (protoc would refuse
+/// to reuse field number 1 for something else, so it's retired for good,
+/// per this repo's own protocol-versioning rule against reusing field
+/// numbers). The token moved to gRPC metadata instead: a real,
+/// discovered need, not a style preference — a load balancer that wants
+/// to route two peers presenting the same token to the same backend
+/// instance (the real fix for the cross-instance relay-pairing gap
+/// backend/internal/relay/relay_test.go's TestRelayDoesNotPairAcrossInstances
+/// documents) needs to see the token to route on, and no standard L7/gRPC-
+/// aware proxy can see inside a message payload the way it can see
+/// metadata. This alone doesn't implement that routing — it just stops
+/// blocking it at the protocol level.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RelayFrame {
-    #[prost(oneof="relay_frame::Payload", tags="1, 2")]
-    pub payload: ::core::option::Option<relay_frame::Payload>,
-}
-/// Nested message and enum types in `RelayFrame`.
-pub mod relay_frame {
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Payload {
-        /// First frame only, from both sides: the token to pair this stream
-        /// against. Any frame after the first with session_token set (instead
-        /// of data) is a protocol error.
-        #[prost(string, tag="1")]
-        SessionToken(::prost::alloc::string::String),
-        /// Every frame after the first: opaque bytes forwarded verbatim to
-        /// the peer. The relay never inspects or interprets this payload —
-        /// whatever's inside (encrypted session frames, in the real end-to-end
-        /// TLS-secured protocol Phase 1 already built) is between the two
-        /// peers, not the relay.
-        #[prost(bytes, tag="2")]
-        Data(::prost::alloc::vec::Vec<u8>),
-    }
+    #[prost(bytes="vec", tag="2")]
+    pub data: ::prost::alloc::vec::Vec<u8>,
 }
 // @@protoc_insertion_point(module)

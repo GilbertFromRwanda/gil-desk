@@ -6,29 +6,38 @@ option go_package = "github.com/nexdesk/nexdesk/backend/gen/nexdesk/v1;nexdeskv1
 
 // Byte relay for when a direct peer-to-peer connection isn't possible
 // (planner Gate G3's "if direct fails -> relay" step, tasks G-20/G-21).
-// Both sides of a session dial Stream and send the *same*
-// RequestSession-issued session_token (RendezvousService, G-12) as their
-// first frame; the relay pairs the two streams by that token and forwards
-// every frame after it byte-for-byte in both directions. The token itself
-// is the only authentication a peer needs to present here — it already
-// proves the rendezvous server checked the pairing was authorized, so the
-// relay doesn't need its own database round trip (same reasoning
-// TokenIssuer's own doc comment gives for why it exists at all).
+// Both sides of a session dial Stream, presenting the *same*
+// RequestSession-issued session_token (RendezvousService, G-12) as gRPC
+// metadata (key "x-nexdesk-session-token") on the call itself, not as a
+// message — see RelayFrame's own doc comment for why that changed. The
+// relay pairs the two streams by that token and forwards every frame
+// byte-for-byte in both directions from then on. The token is the only
+// authentication a peer needs to present here — it already proves the
+// rendezvous server checked the pairing was authorized, so the relay
+// doesn't need its own database round trip (same reasoning TokenIssuer's
+// own doc comment gives for why it exists at all).
 service RelayService {
   rpc Stream(stream RelayFrame) returns (stream RelayFrame);
 }
 
+// Every frame is opaque bytes forwarded verbatim to the peer — the relay
+// never inspects or interprets this payload — whatever's inside
+// (encrypted session frames, in the real end-to-end TLS-secured protocol
+// Phase 1 already built) is between the two peers, not the relay.
+//
+// This used to be a oneof with a session_token variant for the required
+// first frame; that field is gone, not just unused (protoc would refuse
+// to reuse field number 1 for something else, so it's retired for good,
+// per this repo's own protocol-versioning rule against reusing field
+// numbers). The token moved to gRPC metadata instead: a real,
+// discovered need, not a style preference — a load balancer that wants
+// to route two peers presenting the same token to the same backend
+// instance (the real fix for the cross-instance relay-pairing gap
+// backend/internal/relay/relay_test.go's TestRelayDoesNotPairAcrossInstances
+// documents) needs to see the token to route on, and no standard L7/gRPC-
+// aware proxy can see inside a message payload the way it can see
+// metadata. This alone doesn't implement that routing — it just stops
+// blocking it at the protocol level.
 message RelayFrame {
-  oneof payload {
-    // First frame only, from both sides: the token to pair this stream
-    // against. Any frame after the first with session_token set (instead
-    // of data) is a protocol error.
-    string session_token = 1;
-    // Every frame after the first: opaque bytes forwarded verbatim to
-    // the peer. The relay never inspects or interprets this payload —
-    // whatever's inside (encrypted session frames, in the real end-to-end
-    // TLS-secured protocol Phase 1 already built) is between the two
-    // peers, not the relay.
-    bytes data = 2;
-  }
+  bytes data = 2;
 }

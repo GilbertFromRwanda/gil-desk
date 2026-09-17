@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
@@ -16,6 +17,12 @@ import (
 	"github.com/nexdesk/nexdesk/backend/internal/relay"
 	"github.com/nexdesk/nexdesk/backend/internal/rendezvous"
 )
+
+// Mirrors relay.go's own unexported constant — a duplicate rather than
+// an export purely for this package's tests, since it's part of the
+// wire contract (relay.proto's own docs), not an implementation detail
+// worth exporting just to avoid repeating a string in tests.
+const sessionTokenMetadataKey = "x-nexdesk-session-token"
 
 // A real gRPC server (bufconn — an in-memory listener, not mocked RPC
 // calls) is required here, not direct method calls like other packages'
@@ -43,12 +50,10 @@ func newTestServer(t *testing.T, tokens *rendezvous.TokenIssuer) nexdeskv1.Relay
 
 func openStream(t *testing.T, client nexdeskv1.RelayServiceClient, token string) nexdeskv1.RelayService_StreamClient {
 	t.Helper()
-	stream, err := client.Stream(context.Background())
+	ctx := metadata.AppendToOutgoingContext(context.Background(), sessionTokenMetadataKey, token)
+	stream, err := client.Stream(ctx)
 	if err != nil {
 		t.Fatalf("open stream: %v", err)
-	}
-	if err := stream.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_SessionToken{SessionToken: token}}); err != nil {
-		t.Fatalf("send token frame: %v", err)
 	}
 	return stream
 }
@@ -62,7 +67,7 @@ func TestRelayPairsTwoStreamsAndForwardsBothDirections(t *testing.T) {
 	b := openStream(t, client, token)
 
 	// requester (a) -> target (b)
-	if err := a.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_Data{Data: []byte("hello from a")}}); err != nil {
+	if err := a.Send(&nexdeskv1.RelayFrame{Data: []byte("hello from a")}); err != nil {
 		t.Fatalf("a.Send: %v", err)
 	}
 	got, err := b.Recv()
@@ -74,7 +79,7 @@ func TestRelayPairsTwoStreamsAndForwardsBothDirections(t *testing.T) {
 	}
 
 	// target (b) -> requester (a)
-	if err := b.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_Data{Data: []byte("hello from b")}}); err != nil {
+	if err := b.Send(&nexdeskv1.RelayFrame{Data: []byte("hello from b")}); err != nil {
 		t.Fatalf("b.Send: %v", err)
 	}
 	got, err = a.Recv()
@@ -89,7 +94,7 @@ func TestRelayPairsTwoStreamsAndForwardsBothDirections(t *testing.T) {
 	// one-shot pairing fluke.
 	for i := 0; i < 5; i++ {
 		payload := []byte{byte(i)}
-		if err := a.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_Data{Data: payload}}); err != nil {
+		if err := a.Send(&nexdeskv1.RelayFrame{Data: payload}); err != nil {
 			t.Fatalf("a.Send #%d: %v", i, err)
 		}
 		got, err := b.Recv()
@@ -106,12 +111,11 @@ func TestRelayRejectsAMissingSessionToken(t *testing.T) {
 	tokens := rendezvous.NewTokenIssuer([]byte("test-signing-key"), time.Minute)
 	client := newTestServer(t, tokens)
 
+	// No sessionTokenMetadataKey attached — the server checks for it
+	// before even trying to Recv() a frame.
 	stream, err := client.Stream(context.Background())
 	if err != nil {
 		t.Fatalf("open stream: %v", err)
-	}
-	if err := stream.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_Data{Data: []byte("no token yet")}}); err != nil {
-		t.Fatalf("send: %v", err)
 	}
 	if _, err := stream.Recv(); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("got %v, want InvalidArgument", err)
@@ -152,7 +156,7 @@ func TestRelayDoesNotCrossWireDifferentTokenPairs(t *testing.T) {
 	a := openStream(t, client, tokenAB)
 	c := openStream(t, client, tokenCD)
 
-	if err := a.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_Data{Data: []byte("for b only")}}); err != nil {
+	if err := a.Send(&nexdeskv1.RelayFrame{Data: []byte("for b only")}); err != nil {
 		t.Fatalf("a.Send: %v", err)
 	}
 
@@ -192,12 +196,13 @@ func TestRelayDoesNotCrossWireDifferentTokenPairs(t *testing.T) {
 // for two real processes sharing only Postgres/Redis) so the boundary
 // stays *known and tested*, not just discovered once and forgotten.
 // Fixing it for real needs either infrastructure-level sticky routing
-// (keyed on the session token, which today is inside the first stream
-// frame rather than gRPC metadata a load balancer could actually see —
-// itself a real prerequisite fix) or a shared coordination layer (e.g.
-// Redis pub/sub relaying frames between instances) — real, separate
-// design work the planner already scopes as G-31 ("multi-region
-// design"), not implemented here.
+// (keyed on the session token — now gRPC metadata a load balancer can
+// actually see and route on, rather than being buried inside the first
+// stream message the way it was when this test was first written; that
+// move was the real prerequisite fix, done, but the routing itself
+// isn't) or a shared coordination layer (e.g. Redis pub/sub relaying
+// frames between instances) — real, separate design work the planner
+// already scopes as G-31 ("multi-region design"), not implemented here.
 func TestRelayDoesNotPairAcrossInstances(t *testing.T) {
 	tokens := rendezvous.NewTokenIssuer([]byte("test-signing-key"), time.Minute)
 	token, _ := tokens.Issue("device-requester", "device-target")
@@ -208,7 +213,7 @@ func TestRelayDoesNotPairAcrossInstances(t *testing.T) {
 	onA := openStream(t, instanceA, token)
 	onB := openStream(t, instanceB, token)
 
-	if err := onA.Send(&nexdeskv1.RelayFrame{Payload: &nexdeskv1.RelayFrame_Data{Data: []byte("hello from instance A")}}); err != nil {
+	if err := onA.Send(&nexdeskv1.RelayFrame{Data: []byte("hello from instance A")}); err != nil {
 		t.Fatalf("onA.Send: %v", err)
 	}
 
